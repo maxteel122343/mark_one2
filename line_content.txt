@@ -1,0 +1,22 @@
+                const worldY = (e.clientY - rect.top - centerY - camera.y) / camera.zoom;
+                setConnectingMousePos({ x: worldX, y: worldY });
+            }
+        } else if (isDragging && (!isFocusMode || !isCameraLocked)) {
+                // Movement threshold
+                const totalDist = Math.sqrt(
+                    Math.pow(e.clientX - dragStart.x, 2) +
+                    Math.pow(e.clientY - dragStart.y, 2)
+                );
+                if (totalDist > 3 || draggingCardId) {
+                    setCamera(prev => ({ ...prev, x: prev.x + e.movementX, y: prev.y + e.movementY }));
+                }
+            }
+
+            const end = performance.now();
+            if (Math.random() > 0.9) {
+                setInteractionLatency(prev => Math.floor(prev * 0.9 + (end - start) * 0.1));
+            }
+        };
+
+    const handleGlobalMouseUp = useCallback(() => {
+            if (connectingFromId) {
