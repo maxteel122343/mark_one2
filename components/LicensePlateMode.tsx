@@ -15,6 +15,9 @@ interface PlateConfig {
     repsPerPlate: number;       // times each plate must be spoken/typed per round
     maxAttempts: number;        // attempts per vocalization
     maskPlates: boolean;        // if true, plates are hidden during recall
+    cumulative: boolean;        // if true, all previous plates are recalled
+    accumulationWindow: number; // 0 for all, >0 for last N plates
+    autoAdvanceOnFail: boolean; // if true, move to next plate after fail
 }
 
 type Phase = 'config' | 'idle' | 'showing' | 'recall' | 'success' | 'fail' | 'complete';
@@ -48,9 +51,16 @@ const plateMatch = (spoken: string, plate: string): boolean => {
 // ─────────────────────────────────────────────
 // Build recall queue: plates[0..level], each repeated reps times
 // ─────────────────────────────────────────────
-const buildQueue = (plates: string[], level: number, reps: number): string[] => {
+const buildQueue = (plates: string[], level: number, reps: number, config: PlateConfig): string[] => {
     const result: string[] = [];
-    for (let i = 0; i <= level; i++) {
+    let startIdx = 0;
+    if (!config.cumulative) {
+        startIdx = level;
+    } else if (config.accumulationWindow > 0) {
+        startIdx = Math.max(0, level - config.accumulationWindow + 1);
+    }
+
+    for (let i = startIdx; i <= level; i++) {
         for (let r = 0; r < reps; r++) {
             result.push(plates[i]);
         }
@@ -84,13 +94,13 @@ const PlateDisplay: React.FC<PlateProps> = ({ plate, size = 'lg', hidden = false
         <div className={`relative ${s.box} rounded-xl overflow-hidden border-4 ${active ? 'border-yellow-400 shadow-[0_0_40px_rgba(250,204,21,0.5)]' : 'border-white/80'} transition-all duration-300 select-none`}
             style={{ background: 'linear-gradient(135deg, #fff 0%, #f0f0e8 100%)' }}>
             {/* Top bar - green (Mercosul) or blue (old) */}
-            <div className={`absolute top-0 left-0 right-0 h-[22%] flex items-center justify-center gap-1 ${isMercosul ? 'bg-green-600' : 'bg-blue-700'}`}>
+            <div className={`absolute top-0 left-0 right-0 h-[22%] flex items-center justify-center gap-1 ${isMercosul ? 'bg-green-600' : 'bg-blue-700'} transition-opacity ${hidden ? 'opacity-0' : 'opacity-100'}`}>
                 <span className={`${s.top} font-black text-white tracking-[0.25em] uppercase`}>
                     {isMercosul ? '🇧🇷 BRASIL' : '🇧🇷 BRASIL'}
                 </span>
             </div>
             {/* Bottom bar */}
-            <div className={`absolute bottom-0 left-0 right-0 h-[18%] flex items-center justify-center ${isMercosul ? 'bg-green-600' : 'bg-blue-700'}`}>
+            <div className={`absolute bottom-0 left-0 right-0 h-[18%] flex items-center justify-center ${isMercosul ? 'bg-green-600' : 'bg-blue-700'} transition-opacity ${hidden ? 'opacity-0' : 'opacity-100'}`}>
                 <span className={`${s.bot} font-black text-white tracking-widest`}>
                     {isMercosul ? 'MERCOSUL' : 'BRASIL'}
                 </span>
@@ -161,17 +171,51 @@ const ConfigPanel: React.FC<ConfigPanelProps> = ({ config, onChange, onStart }) 
                 <Row label="Repetições por placa" sub="Vezes que deve falar cada placa" k="repsPerPlate" min={1} max={5} />
                 <Row label="Tentativas por rep." sub="Chances por vocalização" k="maxAttempts" min={1} max={10} />
                 
-                <div className="flex items-center justify-between gap-4 py-3 border-t border-gray-50 mt-2">
-                    <div className="flex flex-col">
-                        <span className="text-sm font-black text-gray-800">Modo Cego</span>
-                        <span className="text-[10px] text-gray-400 font-medium">Oculta a placa no recall</span>
+                <div className="flex flex-col gap-1 py-1">
+                    <div className="flex items-center justify-between py-2">
+                        <div className="flex flex-col">
+                            <span className="text-sm font-black text-gray-800">Modo Acúmulo</span>
+                            <span className="text-[10px] text-gray-400 font-medium">As placas se somam a cada nível</span>
+                        </div>
+                        <button 
+                            onClick={() => onChange({ ...config, cumulative: !config.cumulative })}
+                            className={`w-12 h-6 rounded-full transition-all relative ${config.cumulative ? 'bg-indigo-600' : 'bg-gray-200'}`}
+                        >
+                            <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${config.cumulative ? 'left-7' : 'left-1'}`} />
+                        </button>
                     </div>
-                    <button 
-                        onClick={() => onChange({ ...config, maskPlates: !config.maskPlates })}
-                        className={`w-12 h-6 rounded-full transition-all relative ${config.maskPlates ? 'bg-indigo-600' : 'bg-gray-200'}`}
-                    >
-                        <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${config.maskPlates ? 'left-7' : 'left-1'}`} />
-                    </button>
+
+                    {config.cumulative && (
+                        <div className="pl-4 border-l-2 border-indigo-100 mb-2">
+                            <Row label="Janela de acúmulo" sub="0 = todas, 5 = últimas 5" k="accumulationWindow" min={0} max={10} />
+                        </div>
+                    )}
+
+                    <div className="flex items-center justify-between py-2 border-t border-gray-50">
+                        <div className="flex flex-col">
+                            <span className="text-sm font-black text-gray-800">Avanço automático</span>
+                            <span className="text-[10px] text-gray-400 font-medium">Vai para próxima se o tempo acabar</span>
+                        </div>
+                        <button 
+                            onClick={() => onChange({ ...config, autoAdvanceOnFail: !config.autoAdvanceOnFail })}
+                            className={`w-12 h-6 rounded-full transition-all relative ${config.autoAdvanceOnFail ? 'bg-indigo-600' : 'bg-gray-200'}`}
+                        >
+                            <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${config.autoAdvanceOnFail ? 'left-7' : 'left-1'}`} />
+                        </button>
+                    </div>
+
+                    <div className="flex items-center justify-between py-2 border-t border-gray-50">
+                        <div className="flex flex-col">
+                            <span className="text-sm font-black text-gray-800">Modo Cego</span>
+                            <span className="text-[10px] text-gray-400 font-medium">Oculta a placa no recall</span>
+                        </div>
+                        <button 
+                            onClick={() => onChange({ ...config, maskPlates: !config.maskPlates })}
+                            className={`w-12 h-6 rounded-full transition-all relative ${config.maskPlates ? 'bg-indigo-600' : 'bg-gray-200'}`}
+                        >
+                            <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${config.maskPlates ? 'left-7' : 'left-1'}`} />
+                        </button>
+                    </div>
                 </div>
             </div>
 
@@ -218,6 +262,9 @@ const LicensePlateMode: React.FC<LicensePlateModeProps> = ({ onClose }) => {
         repsPerPlate: 3,
         maxAttempts: 3,
         maskPlates: false,
+        cumulative: true,
+        accumulationWindow: 0,
+        autoAdvanceOnFail: false,
     });
 
     const [isSidebarOpen, setIsSidebarOpen] = useState(true);
@@ -329,7 +376,7 @@ const LicensePlateMode: React.FC<LicensePlateModeProps> = ({ onClose }) => {
     };
 
     const beginRecall = useCallback((plts: string[], lvl: number) => {
-        const q = buildQueue(plts, lvl, config.repsPerPlate);
+        const q = buildQueue(plts, lvl, config.repsPerPlate, config);
         setQueue(q);
         setQIdx(0);
         setAttempts(0);
@@ -345,10 +392,17 @@ const LicensePlateMode: React.FC<LicensePlateModeProps> = ({ onClose }) => {
         setPhase('fail');
         setScore(s => ({ ...s, wrong: s.wrong + 1 }));
 
-        setTimeout(() => {
-            // Retry same level
-            if (plates.length > 0) beginLevel(plates, level);
-        }, 2500);
+        if (config.autoAdvanceOnFail) {
+            setTimeout(() => {
+                const nextLvl = level + 1;
+                if (nextLvl >= plates.length) {
+                    setPhase('complete');
+                } else {
+                    setLevel(nextLvl);
+                    beginLevel(plates, nextLvl);
+                }
+            }, 3000);
+        }
     };
 
     const flashFeedback = (type: 'correct' | 'wrong') => {
@@ -478,7 +532,7 @@ const LicensePlateMode: React.FC<LicensePlateModeProps> = ({ onClose }) => {
                                             <PlateDisplay
                                                 plate={plate}
                                                 size="sm"
-                                                hidden={i > level}
+                                                hidden={i > level || (config.maskPlates && phase === 'recall')}
                                                 checked={i < level}
                                                 active={i === level}
                                             />
@@ -639,7 +693,7 @@ const LicensePlateMode: React.FC<LicensePlateModeProps> = ({ onClose }) => {
                         <div className="hidden md:flex gap-2 items-center">
                             {queue.slice(qIdx, qIdx + 5).map((p, i) => (
                                 <div key={i} className={`transition-all ${i === 0 ? 'scale-100' : 'scale-75 opacity-40'}`}>
-                                    <PlateDisplay plate={p} size="sm" active={i === 0} hidden={config.maskPlates && i === 0} />
+                                    <PlateDisplay plate={p} size="sm" active={i === 0} hidden={config.maskPlates} />
                                 </div>
                             ))}
                             {queue.length - qIdx > 5 && (
@@ -664,7 +718,7 @@ const LicensePlateMode: React.FC<LicensePlateModeProps> = ({ onClose }) => {
                                     value={textInput}
                                     onChange={e => setTextInput(e.target.value.toUpperCase())}
                                     onKeyDown={e => e.key === 'Enter' && handleTextSubmit()}
-                                    placeholder={currentTarget || 'Digite a placa...'}
+                                    placeholder={config.maskPlates ? 'Fale ou digite...' : currentTarget}
                                     className="flex-1 bg-white/10 border border-white/10 rounded-xl px-4 py-3 text-white text-sm font-black tracking-widest placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 uppercase"
                                     disabled={paused}
                                 />
@@ -725,9 +779,32 @@ const LicensePlateMode: React.FC<LicensePlateModeProps> = ({ onClose }) => {
                         </div>
                         <div className="text-center">
                             <p className="text-red-400 font-black text-xl md:text-2xl uppercase tracking-tight">Tempo Esgotado!</p>
-                            <p className="text-gray-500 text-xs md:text-sm mt-1 px-4">Não desanime, vamos repetir o nível {level + 1}…</p>
+                            <p className="text-gray-500 text-xs md:text-sm mt-1 px-4">
+                                {config.autoAdvanceOnFail ? 'Avançando automaticamente...' : `O que deseja fazer com o nível ${level + 1}?`}
+                            </p>
                         </div>
-                        <PlateDisplay plate={plates[level] || ''} size="lg" />
+                        <PlateDisplay plate={plates[level] || ''} size="lg" hidden={config.maskPlates} />
+
+                        {!config.autoAdvanceOnFail && (
+                            <div className="flex gap-3 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                                <button
+                                    onClick={() => beginLevel(plates, level)}
+                                    className="px-6 py-2.5 bg-white/10 hover:bg-white/20 text-white rounded-xl font-black text-xs uppercase tracking-widest transition-all"
+                                >
+                                    Tentar Novamente
+                                </button>
+                                <button
+                                    onClick={() => {
+                                        const nextLvl = level + 1;
+                                        if (nextLvl >= plates.length) setPhase('complete');
+                                        else { setLevel(nextLvl); beginLevel(plates, nextLvl); }
+                                    }}
+                                    className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-black text-xs uppercase tracking-widest transition-all shadow-lg shadow-indigo-500/20"
+                                >
+                                    Próxima Placa
+                                </button>
+                            </div>
+                        )}
                     </div>
                 )}
 
