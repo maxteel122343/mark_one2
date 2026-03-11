@@ -107,6 +107,9 @@ function App() {
     const [isLicensePlateModeOpen, setIsLicensePlateModeOpen] = useState(false);
     const [isDotFocusModeOpen, setIsDotFocusModeOpen] = useState(false);
     const [isPdfReadingModeOpen, setIsPdfReadingModeOpen] = useState(false);
+    const [pdfToOpen, setPdfToOpen] = useState<File | undefined>(undefined);
+    const readingModeButtonRef = useRef<HTMLButtonElement>(null);
+    const globalFileInputRef = useRef<HTMLInputElement>(null);
     const metronomeRef = useRef<MetronomeHandle>(null);
 
     // Wrapper for speakText to always use the user-selected voice
@@ -1602,6 +1605,43 @@ function App() {
         }
     }, [user]);
 
+    const handleGlobalFileUpload = useCallback((e: React.ChangeEvent<HTMLInputElement> | File) => {
+        const file = e instanceof File ? e : e.target.files?.[0];
+        if (!file) return;
+
+        if (file.type === 'application/pdf') {
+            setPdfToOpen(file);
+            setIsPdfReadingModeOpen(true);
+            return;
+        }
+
+        const reader = new FileReader();
+        reader.onload = () => {
+            const { x: canvasX, y: canvasY } = screenToCanvas(window.innerWidth / 2, window.innerHeight / 2);
+            let type: 'image' | 'video' | 'audio' | 'gif' = 'image';
+            if (file.type.startsWith('image/')) type = file.type.includes('gif') ? 'gif' : 'image';
+            else if (file.type.startsWith('video/')) type = 'video';
+            else if (file.type.startsWith('audio/')) type = 'audio';
+
+            const attachment: Attachment = {
+                id: crypto.randomUUID(),
+                type,
+                url: reader.result as string,
+                timestamp: Date.now()
+            };
+
+            handleAddCard(undefined, {
+                type: 'media',
+                title: file.name,
+                description: '',
+                x: canvasX,
+                y: canvasY,
+                attachments: [attachment]
+            });
+        };
+        reader.readAsDataURL(file);
+    }, [handleAddCard, screenToCanvas]);
+
     const isCardExpanded = useCallback((card: CardData, visited = new Set<string>()): boolean => {
         if (!card.parentId) return true;
         if (visited.has(card.id)) return false; // Cycle detected
@@ -2713,8 +2753,31 @@ function App() {
                         });
                         deleteCard(draggedCard.id);
                     }
-                } else if (draggedCard.isInternal && draggedCard.type === 'note') {
-                    handleUpdateCard(draggedCard.id, { isInternal: false });
+                } else {
+                    // Check if dropped on Reading Mode button
+                    const btnRect = readingModeButtonRef.current?.getBoundingClientRect();
+                    if (btnRect &&
+                        clientX >= btnRect.left && clientX <= btnRect.right &&
+                        clientY >= btnRect.top && clientY <= btnRect.bottom
+                    ) {
+                        // If it's a PDF media card, open it
+                        const firstPdf = draggedCard.attachments?.find(a => a.type as any === 'pdf' || a.url.toLowerCase().endsWith('.pdf'));
+                        if (firstPdf) {
+                            // Since we only have URL/Base64 in attachment, we might need a Blob if initialFile expects File
+                            // But for now, if it's a PDF, we try to fetch/convert or just support File drops
+                            // User specifically said "arrastar midia do pdf para icone da leitura"
+                            // Let's check if the attachment contains the actual file data
+                            if (firstPdf.url.startsWith('blob:') || firstPdf.url.startsWith('data:')) {
+                                fetch(firstPdf.url).then(r => r.blob()).then(blob => {
+                                    const file = new File([blob], draggedCard.title || 'document.pdf', { type: 'application/pdf' });
+                                    setPdfToOpen(file);
+                                    setIsPdfReadingModeOpen(true);
+                                });
+                            }
+                        }
+                    } else if (draggedCard.isInternal && draggedCard.type === 'note') {
+                        handleUpdateCard(draggedCard.id, { isInternal: false });
+                    }
                 }
             }
         }
@@ -3276,7 +3339,7 @@ function App() {
                         )}
                     </div>
 
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1.5 md:gap-2 flex-wrap justify-center max-w-[90vw] md:max-w-none">
                         <button
                             onClick={() => setIsFilterPopoverOpen(prev => !prev)}
                             className={`p-2.5 rounded-full transition-all flex items-center justify-center ${isFilterPopoverOpen || filterColor !== 'all' || filterTags.length > 0
@@ -3326,12 +3389,38 @@ function App() {
                         </button>
                         {/* PDF Reading Mode Button */}
                         <button
+                            ref={readingModeButtonRef}
                             onClick={() => setIsPdfReadingModeOpen(true)}
+                            onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                            onDrop={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                const file = e.dataTransfer.files[0];
+                                if (file && file.type === 'application/pdf') {
+                                    setPdfToOpen(file);
+                                    setIsPdfReadingModeOpen(true);
+                                }
+                            }}
                             className="p-2.5 rounded-full transition-all flex items-center justify-center bg-white/80 backdrop-blur-md border border-white/20 text-gray-600 hover:text-emerald-500 shadow-xl"
-                            title="Leitura Ativa com PDF"
+                            title="Leitura Ativa com PDF (Solte um PDF aqui)"
                         >
                             <BookOpen size={18} />
                         </button>
+                        {/* Global Upload Button */}
+                        <button
+                            onClick={() => globalFileInputRef.current?.click()}
+                            className="p-2.5 rounded-full transition-all flex items-center justify-center bg-white/80 backdrop-blur-md border border-white/20 text-gray-600 hover:text-blue-500 shadow-xl"
+                            title="Upload de Mídia para o Canvas"
+                        >
+                            <CloudUpload size={18} />
+                        </button>
+                        <input
+                            ref={globalFileInputRef}
+                            type="file"
+                            className="hidden"
+                            accept="image/*,video/*,audio/*,.pdf,.gif"
+                            onChange={handleGlobalFileUpload}
+                        />
                     </div>
                 </div>
             )}
@@ -3345,8 +3434,15 @@ function App() {
             )}
             {/* PDF Reading Mode */}
             {isPdfReadingModeOpen && (
-                <PdfReadingMode onClose={() => setIsPdfReadingModeOpen(false)} />
+                <PdfReadingMode
+                    onClose={() => {
+                        setIsPdfReadingModeOpen(false);
+                        setPdfToOpen(undefined);
+                    }}
+                    initialFile={pdfToOpen}
+                />
             )}
+
             {/* Dotted Grid Background */}
             <div
                 className="absolute inset-0 pointer-events-none"

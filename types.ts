@@ -4,14 +4,14 @@ export type CardShape = 'rectangle' | 'circle' | 'hexagon' | 'diamond';
 
 export interface Attachment {
   id: string;
-  type: 'image' | 'audio' | 'video' | 'gif';
+  type: 'image' | 'audio' | 'video' | 'gif' | 'pdf';
   url: string; // Base64 data or URL
   timestamp: number;
 }
 
 export interface GalleryItem {
   id: string;
-  type: 'image' | 'audio' | 'video' | 'gif';
+  type: 'image' | 'audio' | 'video' | 'gif' | 'pdf';
   url: string;
   name?: string;
   timestamp: number;

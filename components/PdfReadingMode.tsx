@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
     X, Upload, Play, Pause, Settings, Mic, MicOff, RotateCcw,
     ChevronLeft, ChevronRight, Clock, BookOpen, Brain, Trophy,
-    AlertCircle, Check, Square, Maximize2
+    AlertCircle, Check, Square, Maximize2, Eye
 } from 'lucide-react';
 import { getCurrentAi } from '../services/geminiService';
 
@@ -13,6 +13,7 @@ interface ReadConfig {
     linesToRead: number;      // lines per session
     fontSize: number;         // px
     lineHeight: number;       // px
+    trackingMode: 'eyes' | 'head';
 }
 
 interface LapRecord {
@@ -47,9 +48,10 @@ function fmtSecs(s: number) {
 // ─── Main Component ───────────────────────────────────────────────────────────
 interface PdfReadingModeProps {
     onClose: () => void;
+    initialFile?: File;
 }
 
-const PdfReadingMode: React.FC<PdfReadingModeProps> = ({ onClose }) => {
+const PdfReadingMode: React.FC<PdfReadingModeProps> = ({ onClose, initialFile }) => {
     // ── state ──
     const [phase, setPhase] = useState<Phase>('upload');
     const [config, setConfig] = useState<ReadConfig>({
@@ -58,6 +60,7 @@ const PdfReadingMode: React.FC<PdfReadingModeProps> = ({ onClose }) => {
         linesToRead: 10,
         fontSize: 20,
         lineHeight: 48,
+        trackingMode: 'eyes',
     });
     const [showConfig, setShowConfig] = useState(false);
 
@@ -102,10 +105,15 @@ const PdfReadingMode: React.FC<PdfReadingModeProps> = ({ onClose }) => {
 
     useEffect(() => () => clearAllTimers(), []);
 
-    // ── PDF Upload ──
-    const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (!file || !file.name.endsWith('.pdf')) return;
+    // ── Handle Initial File ──
+    useEffect(() => {
+        if (initialFile) {
+            handleFileUploadInternal(initialFile);
+        }
+    }, [initialFile]);
+
+    const handleFileUploadInternal = async (file: File) => {
+        if (!file || !file.name.toLowerCase().endsWith('.pdf')) return;
         setPdfName(file.name);
 
         try {
@@ -126,7 +134,7 @@ const PdfReadingMode: React.FC<PdfReadingModeProps> = ({ onClose }) => {
                     .replace(/\s+/g, ' ')
                     .trim();
 
-                // Split into lines  ~60 chars each
+                // Split into lines  ~70 chars each
                 const words = pageText.split(' ');
                 let line = '';
                 for (const word of words) {
@@ -405,12 +413,15 @@ Responda em JSON com os campos: score (number 0-100), remembered (string[]), for
                             Faça upload de um PDF. O destaque visual guia seus olhos linha por linha. Depois, diga o que lembrou — a IA mede sua memória.
                         </p>
                     </div>
-                    <input ref={fileInputRef} type="file" accept=".pdf" onChange={handleFileUpload} className="hidden" />
                     <button onClick={() => fileInputRef.current?.click()}
                         className="flex items-center gap-3 px-8 py-4 bg-emerald-600 hover:bg-emerald-500 text-white rounded-2xl font-black text-base uppercase tracking-widest shadow-xl shadow-emerald-500/25 transition-all active:scale-[0.98]">
                         <Upload size={20} />
                         Selecionar PDF
                     </button>
+                    <input ref={fileInputRef} type="file" accept=".pdf" onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) handleFileUploadInternal(file);
+                    }} className="hidden" />
                 </div>
             )}
 
@@ -440,6 +451,22 @@ Responda em JSON com os campos: score (number 0-100), remembered (string[]), for
                                 <p className="text-[10px] text-gray-500 uppercase tracking-widest font-bold">{label}</p>
                             </div>
                         ))}
+                    </div>
+
+                    {/* Vertical Control */}
+                    <div className="flex bg-white/5 border border-white/10 rounded-2xl p-1.5 w-full max-w-sm">
+                        <button
+                            onClick={() => setConfig(prev => ({ ...prev, trackingMode: 'eyes' }))}
+                            className={`flex-1 flex flex-col items-center py-2.5 rounded-xl transition ${config.trackingMode === 'eyes' ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-600/25' : 'text-gray-500 hover:text-emerald-400'}`}>
+                            <Eye size={16} />
+                            <span className="text-[10px] font-black uppercase tracking-tighter mt-1">Visão</span>
+                        </button>
+                        <button
+                            onClick={() => setConfig(prev => ({ ...prev, trackingMode: 'head' }))}
+                            className={`flex-1 flex flex-col items-center py-2.5 rounded-xl transition ${config.trackingMode === 'head' ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-600/25' : 'text-gray-500 hover:text-emerald-400'}`}>
+                            <Maximize2 size={16} />
+                            <span className="text-[10px] font-black uppercase tracking-tighter mt-1">Cabeça</span>
+                        </button>
                     </div>
 
                     {/* History */}
@@ -621,10 +648,12 @@ Responda em JSON com os campos: score (number 0-100), remembered (string[]), for
                             <p className="text-[10px] font-black text-gray-500 uppercase tracking-widest mb-2">Lap Times</p>
                             <div className="grid grid-cols-4 gap-1">
                                 {lapRecords.map((lap, i) => (
-                                    <div key={i} className={`rounded-lg p-1.5 text-center text-[10px] font-black border ${lap.diff <= 0 ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' : 'bg-orange-500/10 border-orange-500/20 text-orange-400'}`}>
-                                        <p>#{i + 1}</p>
-                                        <p className="tabular-nums">{(lap.actualMs / 1000).toFixed(1)}s</p>
-                                        <p className="text-[8px] opacity-70">{lap.diff > 0 ? `+${(lap.diff / 1000).toFixed(1)}` : (lap.diff / 1000).toFixed(1)}</p>
+                                    <div key={i} className={`rounded-xl p-2 text-center border relative overflow-hidden transition-all ${lap.diff <= 0 ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' : 'bg-orange-500/10 border-orange-500/20 text-orange-400'}`}>
+                                        <p className="text-[8px] opacity-60 uppercase mb-0.5">Line {i + 1}</p>
+                                        <p className="text-sm font-black tabular-nums">{(lap.actualMs / 1000).toFixed(1)}s</p>
+                                        <div className={`text-[8px] font-bold mt-0.5 ${lap.diff > 0 ? 'text-red-400' : 'text-emerald-500'}`}>
+                                            {lap.diff > 0 ? `+${(lap.diff / 1000).toFixed(1)}s atraso` : `${(lap.diff / 1000).toFixed(1)}s early`}
+                                        </div>
                                     </div>
                                 ))}
                             </div>
