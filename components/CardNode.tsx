@@ -3534,6 +3534,13 @@ const CardNode: React.FC<CardNodeProps> = React.memo(({
                         </div>
                     )
                 }
+                {/* Completion History Modal - NOTE CARD */}
+                <CompletionHistoryModal
+                    isOpen={showCompletionHistory}
+                    onClose={() => setShowCompletionHistory(false)}
+                    history={card.completionHistory || []}
+                    formatTime={formatChronoTime}
+                />
             </div >
         );
     }
