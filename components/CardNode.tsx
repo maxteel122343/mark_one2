@@ -5096,7 +5096,7 @@ const CompletionHistoryModal: React.FC<{
 
     return (
         <div
-            className="absolute inset-0 z-[120] bg-white/95 backdrop-blur-2xl rounded-[inherit] flex flex-col shadow-2xl animate-in fade-in zoom-in-95 duration-300 overflow-hidden"
+            className="absolute left-full ml-4 top-0 z-[200] w-80 max-h-[520px] bg-white/98 backdrop-blur-2xl rounded-3xl flex flex-col shadow-[0_24px_64px_rgba(0,0,0,0.15)] border border-gray-100 animate-in slide-in-from-left-4 fade-in duration-300 overflow-hidden"
             onClick={e => e.stopPropagation()}
         >
             <div className="p-6 border-b border-gray-50 flex justify-between items-center bg-gray-50/30">
