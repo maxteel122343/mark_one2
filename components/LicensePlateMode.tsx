@@ -87,10 +87,21 @@ const generatePlates = (count: number, unlockedIds: string[]): PlateInstance[] =
 // Matching helpers
 // ─────────────────────────────────────────────
 const normPlate = (s: string) => s.replace(/[\s\-]/g, '').toUpperCase();
-const plateMatch = (spoken: string, plate: string): boolean => {
-    const s = normPlate(spoken);
-    const p = normPlate(plate);
-    return s.includes(p) || p.split('').every(c => s.includes(c));
+const plateMatch = (input: string, target: string): boolean => {
+    const s = normPlate(input);
+    const p = normPlate(target);
+    if (!s || !p) return false;
+    // Exact match or contains target
+    if (s === p || s.includes(p)) return true;
+    // For voice: if it's high length and has most characters
+    if (s.length >= p.length) {
+        let matches = 0;
+        for (let char of p) {
+            if (s.includes(char)) matches++;
+        }
+        return matches >= p.length - 1; // Allow 1 mistake for voice
+    }
+    return false;
 };
 
 // ─────────────────────────────────────────────
@@ -616,9 +627,16 @@ const LicensePlateMode: React.FC<LicensePlateModeProps> = ({ onClose }) => {
 
     const handleTextSubmit = () => {
         if (!textInput.trim() || phase !== 'recall') return;
-        const val = textInput.trim();
-        setTextInput('');
-        handleSpokenInput(val);
+        handleSpokenInput(textInput.trim());
+    };
+
+    const onInputChange = (val: string) => {
+        const up = val.toUpperCase();
+        setTextInput(up);
+        // Auto advance if match
+        if (plateMatch(up, queue[qIdx]?.text || '')) {
+            handleSpokenInput(up);
+        }
     };
 
     const handlePauseToggle = () => {
@@ -803,7 +821,7 @@ const LicensePlateMode: React.FC<LicensePlateModeProps> = ({ onClose }) => {
                                         <input
                                             ref={textInputRef}
                                             value={textInput}
-                                            onChange={e => setTextInput(e.target.value.toUpperCase())}
+                                            onChange={e => onInputChange(e.target.value)}
                                             onKeyDown={e => e.key === 'Enter' && handleTextSubmit()}
                                             autoFocus
                                             className={`w-full border-2 rounded-2xl px-6 py-4 font-black tracking-[0.2em] uppercase outline-none transition-all ${
@@ -814,11 +832,28 @@ const LicensePlateMode: React.FC<LicensePlateModeProps> = ({ onClose }) => {
                                             placeholder="REGISTRE AQUI..."
                                         />
                                         <div className="absolute right-4 top-1/2 -translate-y-1/2 flex items-center gap-2">
-                                            {micActive && <div className="flex gap-1">
-                                                {[1,2,3].map(i => <div key={i} className={`w-1 rounded-full animate-bounce ${theme === 'officer' ? 'bg-indigo-500' : 'bg-indigo-600'}`} style={{ height: `${Math.random()*15+5}px`, animationDelay: `${i*0.1}s` }} />)}
+                                            {textInput.length > 0 && (
+                                                <button 
+                                                    onClick={handleTextSubmit}
+                                                    className={`p-2 rounded-xl transition-all ${theme === 'officer' ? 'bg-indigo-600 text-white' : 'bg-indigo-500 text-white animate-pulse'}`}
+                                                >
+                                                    <ChevronRight size={18} strokeWidth={3} />
+                                                </button>
+                                            )}
+                                            {micActive && <div className="flex gap-1 items-center px-1">
+                                                {[1,2,3,4,5].map(i => (
+                                                    <div 
+                                                        key={i} 
+                                                        className={`w-1 rounded-full animate-pulse ${theme === 'officer' ? 'bg-indigo-400' : 'bg-indigo-500'}`} 
+                                                        style={{ 
+                                                            height: `${Math.random()*20+10}px`, 
+                                                            animationDuration: `${Math.random()*0.5+0.5}s` 
+                                                        }} 
+                                                    />
+                                                ))}
                                             </div>}
-                                            <button onClick={() => micActive ? stopMic() : startMic()} className={`p-2 rounded-xl transition-all ${micActive ? 'bg-red-500 text-white' : theme === 'officer' ? 'bg-white/5 text-gray-500' : 'bg-gray-100 text-gray-400'}`}>
-                                                {micActive ? <Mic size={18} /> : <MicOff size={18} />}
+                                            <button onClick={() => micActive ? stopMic() : startMic()} className={`p-2 rounded-xl transition-all ${micActive ? 'bg-red-500 text-white ring-4 ring-red-500/20 shadow-lg' : theme === 'officer' ? 'bg-white/5 text-gray-500' : 'bg-gray-100 text-gray-400'}`}>
+                                                {micActive ? <Mic size={18} className="animate-pulse" /> : <MicOff size={18} />}
                                             </button>
                                         </div>
                                     </div>
