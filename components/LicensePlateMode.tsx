@@ -7,6 +7,21 @@ import {
 } from 'lucide-react';
 
 // ─────────────────────────────────────────────
+// Styles & Animations
+// ─────────────────────────────────────────────
+const ANIMATIONS = `
+  @keyframes marquee {
+    0% { transform: translateX(0); }
+    100% { transform: translateX(-50%); }
+  }
+  .animate-marquee {
+    display: flex;
+    width: max-content;
+    animation: marquee 20s linear infinite;
+  }
+`;
+
+// ─────────────────────────────────────────────
 // Car Database & Economy
 // ─────────────────────────────────────────────
 interface CarBrand {
@@ -158,9 +173,9 @@ const PlateDisplay: React.FC<PlateProps> = ({ plate, size = 'lg', hidden = false
             </div>
             {/* Check overlay */}
             {checked && (
-                <div className="absolute inset-0 bg-emerald-500/20 flex items-center justify-end pr-2 pb-2">
-                    <div className="w-6 h-6 bg-emerald-500 rounded-full flex items-center justify-center shadow-lg">
-                        <Check size={14} className="text-white" strokeWidth={3} />
+                <div className="absolute inset-0 bg-emerald-500/40 backdrop-blur-[1px] flex items-center justify-center animate-in zoom-in duration-300">
+                    <div className="w-16 h-16 bg-emerald-500 rounded-full flex items-center justify-center shadow-[0_0_30px_rgba(16,185,129,0.5)]">
+                        <Check size={40} className="text-white" strokeWidth={4} />
                     </div>
                 </div>
             )}
@@ -263,11 +278,12 @@ const Shop: React.FC<{
 interface ConfigPanelProps {
     config: PlateConfig;
     theme: Theme;
+    feedbacks: string[];
     onChange: (c: PlateConfig) => void;
     onStart: () => void;
 }
 
-const ConfigPanel: React.FC<ConfigPanelProps> = ({ config, theme, onChange, onStart }) => {
+const ConfigPanel: React.FC<ConfigPanelProps> = ({ config, theme, feedbacks, onChange, onStart }) => {
     const set = (key: keyof PlateConfig, val: any) =>
         onChange({ ...config, [key]: val });
 
@@ -288,7 +304,22 @@ const ConfigPanel: React.FC<ConfigPanelProps> = ({ config, theme, onChange, onSt
     );
 
     return (
-        <div className="flex flex-col gap-6 p-6 max-w-md w-full">
+        <div className="flex flex-col gap-6 p-6 max-w-md w-full relative overflow-hidden">
+            {/* Feedback Marquee */}
+            {feedbacks.length > 0 && (
+                <div className={`-mx-6 -mt-6 mb-2 py-2 overflow-hidden whitespace-nowrap border-b relative ${
+                    theme === 'officer' ? 'bg-indigo-500/5 border-white/5' : 'bg-indigo-50/50 border-gray-100'
+                }`}>
+                    <div className="flex animate-marquee gap-8">
+                        {[...feedbacks, ...feedbacks].map((f, i) => (
+                            <span key={i} className={`text-[9px] font-bold uppercase tracking-wider ${theme === 'officer' ? 'text-indigo-400' : 'text-indigo-600'}`}>
+                                " {f} "
+                            </span>
+                        ))}
+                    </div>
+                </div>
+            )}
+
             <div>
                 <p className="text-[10px] font-black text-indigo-500 uppercase tracking-[0.25em] mb-1">Configurar Missão</p>
                 <h2 className={`text-2xl font-black uppercase tracking-tight flex items-center gap-2 ${theme === 'officer' ? 'text-white' : 'text-gray-900'}`}>Oficial de Trânsito</h2>
@@ -349,11 +380,18 @@ const LicensePlateMode: React.FC<LicensePlateModeProps> = ({ onClose }) => {
     });
     const [theme, setTheme] = useState<Theme>(() => localStorage.getItem('mark_one_theme') as Theme || 'officer');
 
+    const [feedbacks, setFeedbacks] = useState<string[]>(() => {
+        const saved = localStorage.getItem('mark_one_feedbacks');
+        // Initial sample feedbacks for the marquee
+        return saved ? JSON.parse(saved) : ["Senti minha atenção muito mais aguçada!", "Consigo memorizar 7 dígitos agora com facilidade.", "O som dos motores ajuda a focar na missão."];
+    });
+
     useEffect(() => {
         localStorage.setItem('mark_one_coins', coins.toString());
         localStorage.setItem('mark_one_unlocked_cars', JSON.stringify(unlockedCars));
         localStorage.setItem('mark_one_theme', theme);
-    }, [coins, unlockedCars, theme]);
+        localStorage.setItem('mark_one_feedbacks', JSON.stringify(feedbacks));
+    }, [coins, unlockedCars, theme, feedbacks]);
 
     // ── STATE ──
     const [phase, setPhase] = useState<Phase>('config');
@@ -371,6 +409,8 @@ const LicensePlateMode: React.FC<LicensePlateModeProps> = ({ onClose }) => {
     const [attempts, setAttempts] = useState(0);
     const [isSidebarOpen, setIsSidebarOpen] = useState(true);
     const [score, setScore] = useState({ correct: 0, wrong: 0 });
+    const [userFeedback, setUserFeedback] = useState('');
+    const [feedbackSubmitted, setFeedbackSubmitted] = useState(false);
 
     // ── REFS ──
     const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -415,7 +455,19 @@ const LicensePlateMode: React.FC<LicensePlateModeProps> = ({ onClose }) => {
         }
     };
 
-    const startCountdown = useCallback((seconds: number, onEnd: () => void) => {
+    function stopMic() {
+        recognitionRef.current?.stop();
+        recognitionRef.current = null;
+        setMicActive(false);
+        setTranscript('');
+    }
+
+    function flashFeedback(type: 'correct' | 'wrong') {
+        setFeedback(type);
+        setTimeout(() => setFeedback(null), 800);
+    }
+
+    function startCountdown(seconds: number, onEnd: () => void) {
         clearTimerInterval();
         setTimer(seconds);
         let current = seconds;
@@ -427,58 +479,15 @@ const LicensePlateMode: React.FC<LicensePlateModeProps> = ({ onClose }) => {
                 onEnd();
             }
         }, 1000);
-    }, []);
+    }
 
-    const startMic = useCallback(() => {
-        const SpeechRecognitionApi = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-        if (!SpeechRecognitionApi) return;
-        const rec = new SpeechRecognitionApi();
-        rec.lang = 'pt-BR';
-        rec.continuous = true;
-        rec.interimResults = true;
-        rec.onresult = (e: any) => {
-            const last = e.results[e.results.length - 1];
-            setTranscript(last[0].transcript);
-            if (last.isFinal) {
-                handleSpokenInput(last[0].transcript);
-                setTranscript('');
-            }
-        };
-        rec.start();
-        recognitionRef.current = rec;
-        setMicActive(true);
-    }, []); // eslint-disable-line
+    function handleTimeFail() {
+        stopMic();
+        setPhase('fail');
+        setScore(s => ({ ...s, wrong: s.wrong + 1 }));
+    }
 
-    const stopMic = useCallback(() => {
-        recognitionRef.current?.stop();
-        recognitionRef.current = null;
-        setMicActive(false);
-        setTranscript('');
-    }, []);
-
-    const flashFeedback = (type: 'correct' | 'wrong') => {
-        setFeedback(type);
-        setTimeout(() => setFeedback(null), 400);
-    };
-
-    // ── GAME LOGIC ──
-    const handleStart = () => {
-        const gen = generatePlates(config.totalPlates, unlockedCars);
-        setPlates(gen);
-        setLevel(0);
-        setScore({ correct: 0, wrong: 0 });
-        beginLevel(gen, 0);
-    };
-
-    const beginLevel = (plts: PlateInstance[], lvl: number) => {
-        setPhase('showing');
-        setPaused(false);
-        setQIdx(0);
-        setAttempts(0);
-        startCountdown(config.showNewPlateSecs, () => beginRecall(plts, lvl));
-    };
-
-    const beginRecall = (plts: PlateInstance[], lvl: number) => {
+    function beginRecall(plts: PlateInstance[], lvl: number) {
         const q = buildQueue(plts, lvl, config.repsPerPlate, config);
         setQueue(q);
         setQIdx(0);
@@ -486,15 +495,25 @@ const LicensePlateMode: React.FC<LicensePlateModeProps> = ({ onClose }) => {
         setPhase('recall');
         startCountdown(config.vocalTimeSecs, () => handleTimeFail());
         setTimeout(() => startMic(), 200);
-    };
+    }
 
-    const handleTimeFail = () => {
-        stopMic();
-        setPhase('fail');
-        setScore(s => ({ ...s, wrong: s.wrong + 1 }));
-    };
+    function beginLevel(plts: PlateInstance[], lvl: number) {
+        setPhase('showing');
+        setPaused(false);
+        setQIdx(0);
+        setAttempts(0);
+        startCountdown(config.showNewPlateSecs, () => beginRecall(plts, lvl));
+    }
 
-    const advanceQueue = (currentQ: PlateInstance[], nextIdx: number, lvl: number, plts: PlateInstance[]) => {
+    function handleStart() {
+        const gen = generatePlates(config.totalPlates, unlockedCars);
+        setPlates(gen);
+        setLevel(0);
+        setScore({ correct: 0, wrong: 0 });
+        beginLevel(gen, 0);
+    }
+
+    function advanceQueue(currentQ: PlateInstance[], nextIdx: number, lvl: number, plts: PlateInstance[]) {
         if (nextIdx >= currentQ.length) {
             clearTimerInterval();
             stopMic();
@@ -508,15 +527,19 @@ const LicensePlateMode: React.FC<LicensePlateModeProps> = ({ onClose }) => {
         } else {
             setQIdx(nextIdx);
         }
-    };
+    }
 
-    const handleSpokenInput = (text: string) => {
+    function handleSpokenInput(text: string) {
         if (phase !== 'recall' || !queue[qIdx]) return;
         if (plateMatch(text, queue[qIdx].text)) {
             flashFeedback('correct');
             setAttempts(0);
             setCoins(c => c + 15);
-            advanceQueue(queue, qIdx + 1, level, plates);
+            setTranscript(''); 
+            // Small delay to show the green checkmark
+            setTimeout(() => {
+                advanceQueue(queue, qIdx + 1, level, plates);
+            }, 500);
         } else {
             setAttempts(prev => {
                 const n = prev + 1;
@@ -525,7 +548,41 @@ const LicensePlateMode: React.FC<LicensePlateModeProps> = ({ onClose }) => {
                 return n;
             });
         }
-    };
+    }
+
+    function startMic() {
+        const SpeechRecognitionApi = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+        if (!SpeechRecognitionApi) return;
+        const rec = new SpeechRecognitionApi();
+        rec.lang = 'pt-BR';
+        rec.continuous = true;
+        rec.interimResults = true;
+        
+        let lastMatch = '';
+
+        rec.onresult = (e: any) => {
+            let interim = '';
+            for (let i = e.resultIndex; i < e.results.length; ++i) {
+                const transcriptText = e.results[i][0].transcript;
+                if (e.results[i].isFinal) {
+                    handleSpokenInput(transcriptText);
+                    interim = '';
+                } else {
+                    interim += transcriptText;
+                }
+            }
+            if (interim) {
+                setTranscript(interim);
+                if (plateMatch(interim, queue[qIdx]?.text || '') && interim !== lastMatch) {
+                    lastMatch = interim;
+                    handleSpokenInput(interim);
+                }
+            }
+        };
+        rec.start();
+        recognitionRef.current = rec;
+        setMicActive(true);
+    }
 
     const handleTextSubmit = () => {
         if (!textInput.trim() || phase !== 'recall') return;
@@ -539,14 +596,24 @@ const LicensePlateMode: React.FC<LicensePlateModeProps> = ({ onClose }) => {
         else { setPaused(true); stopMic(); clearTimerInterval(); }
     };
 
-    const handleRestart = () => {
+    function handleRestart() {
         clearTimerInterval();
         stopMic();
         setPhase('config');
         setPlates([]);
         setLevel(0);
         setQueue([]);
-    };
+        setFeedbackSubmitted(false);
+        setUserFeedback('');
+    }
+
+    function submitFeedback() {
+        if (!userFeedback.trim()) return;
+        const newFeedbacks = [userFeedback, ...feedbacks].slice(0, 10); // Keep last 10
+        setFeedbacks(newFeedbacks);
+        setFeedbackSubmitted(true);
+        setUserFeedback('');
+    }
 
     const buyCar = (carId: string, price: number) => {
         setCoins(c => c - price);
@@ -629,7 +696,7 @@ const LicensePlateMode: React.FC<LicensePlateModeProps> = ({ onClose }) => {
                         <div className={`rounded-[40px] shadow-2xl animate-in fade-in zoom-in-95 duration-500 overflow-hidden ${
                             theme === 'officer' ? 'bg-gray-900 border border-white/5' : 'bg-white'
                         }`}>
-                            <ConfigPanel config={config} theme={theme} onChange={setConfig} onStart={handleStart} />
+                            <ConfigPanel config={config} theme={theme} feedbacks={feedbacks} onChange={setConfig} onStart={handleStart} />
                         </div>
                     )}
 
@@ -678,7 +745,14 @@ const LicensePlateMode: React.FC<LicensePlateModeProps> = ({ onClose }) => {
                                 </div>
                             </div>
 
-                            <PlateDisplay plate={currentTarget} brandId={queue[qIdx]?.brandId} size="xl" active={!paused} hidden={config.maskPlates} />
+                            <PlateDisplay 
+                                plate={currentTarget} 
+                                brandId={queue[qIdx]?.brandId} 
+                                size="xl" 
+                                active={!paused} 
+                                hidden={config.maskPlates} 
+                                checked={feedback === 'correct'}
+                            />
 
                             <div className="w-full flex flex-col items-center gap-4">
                                 <div className="flex gap-2 w-full">
@@ -749,17 +823,59 @@ const LicensePlateMode: React.FC<LicensePlateModeProps> = ({ onClose }) => {
                     )}
 
                     {phase === 'complete' && (
-                        <div className="flex flex-col items-center gap-8 animate-in zoom-in-95 duration-500 text-center">
+                        <div className="flex flex-col items-center gap-8 animate-in zoom-in-95 duration-500 text-center max-w-lg w-full">
+                            <style>{ANIMATIONS}</style>
                             <Trophy size={80} className="text-yellow-400" strokeWidth={1} />
                             <div>
                                 <h1 className={`text-5xl font-black uppercase tracking-tighter ${theme === 'officer' ? 'text-white' : 'text-gray-900'}`}>Capitão Honorário</h1>
                                 <p className={`mt-2 ${theme === 'officer' ? 'text-gray-400' : 'text-gray-500'}`}>Você registrou {plates.length} infrações com perfeição.</p>
                             </div>
+                            
                             <div className="flex items-center gap-4 bg-yellow-400/10 border-2 border-yellow-400/20 px-8 py-4 rounded-[32px]">
                                 <Coins size={32} className="text-yellow-400" />
                                 <span className="text-4xl font-black text-yellow-400 tracking-tighter">{coins}</span>
                             </div>
-                            <button onClick={handleRestart} className="px-12 py-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-[24px] font-black uppercase tracking-widest shadow-2xl shadow-indigo-500/40">Reiniciar Sistema</button>
+
+                            {!feedbackSubmitted ? (
+                                <div className={`w-full p-6 rounded-[32px] border text-left flex flex-col gap-4 ${
+                                    theme === 'officer' ? 'bg-white/5 border-white/10' : 'bg-white border-gray-100'
+                                }`}>
+                                    <div>
+                                        <p className="text-[10px] font-black text-indigo-500 uppercase tracking-widest mb-1">Debriefing de Missão</p>
+                                        <h3 className={`text-lg font-black uppercase tracking-tight ${theme === 'officer' ? 'text-white' : 'text-gray-900'}`}>Avaliação de Memória</h3>
+                                    </div>
+                                    <p className={`text-xs ${theme === 'officer' ? 'text-gray-400' : 'text-gray-500'}`}>
+                                        Qual melhoria você sentiu na sua memória após o exercício? Como você descreveria uma possível melhora?
+                                    </p>
+                                    <textarea 
+                                        value={userFeedback}
+                                        onChange={(e) => setUserFeedback(e.target.value)}
+                                        placeholder="Descreva sua experiência..."
+                                        className={`w-full min-h-[100px] p-4 rounded-2xl resize-none outline-none transition-all text-sm font-medium ${
+                                            theme === 'officer' 
+                                                ? 'bg-gray-900 text-white border-white/10 focus:border-indigo-500' 
+                                                : 'bg-gray-50 text-gray-900 border-gray-200 focus:border-indigo-600'
+                                        }`}
+                                    />
+                                    <button 
+                                        onClick={submitFeedback}
+                                        disabled={!userFeedback.trim()}
+                                        className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl font-black uppercase tracking-widest transition-all"
+                                    >
+                                        Enviar Relatório
+                                    </button>
+                                </div>
+                            ) : (
+                                <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+                                    <div className="w-16 h-16 bg-emerald-500/20 rounded-full flex items-center justify-center mx-auto mb-4">
+                                        <Check size={32} className="text-emerald-500" strokeWidth={3} />
+                                    </div>
+                                    <p className={`font-black uppercase tracking-tight ${theme === 'officer' ? 'text-white' : 'text-gray-900'}`}>Feedback Registrado com Sucesso!</p>
+                                    <p className="text-gray-500 text-xs mt-1">Seu relatório ajuda a aprimorar o treinamento.</p>
+                                </div>
+                            )}
+
+                            <button onClick={handleRestart} className="px-12 py-4 bg-indigo-600/10 hover:bg-indigo-600/20 text-indigo-400 border-2 border-indigo-500/20 rounded-[24px] font-black uppercase tracking-widest transition-all mt-4">Reiniciar Sistema</button>
                         </div>
                     )}
 
