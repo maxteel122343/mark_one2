@@ -411,12 +411,14 @@ const LicensePlateMode: React.FC<LicensePlateModeProps> = ({ onClose }) => {
     const [score, setScore] = useState({ correct: 0, wrong: 0 });
     const [userFeedback, setUserFeedback] = useState('');
     const [feedbackSubmitted, setFeedbackSubmitted] = useState(false);
+    const [sirenActive, setSirenActive] = useState(false);
 
     // ── REFS ──
     const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
     const recognitionRef = useRef<any>(null);
     const textInputRef = useRef<HTMLInputElement>(null);
     const audioRef = useRef<HTMLAudioElement | null>(null);
+    const sirenAudioRef = useRef<HTMLAudioElement | null>(null);
 
     // ── AUDIO ──
     const stopEngineSound = useCallback(() => {
@@ -436,6 +438,34 @@ const LicensePlateMode: React.FC<LicensePlateModeProps> = ({ onClose }) => {
         audio.play().catch(() => {});
         audioRef.current = audio;
     }, [stopEngineSound]);
+
+    const toggleSiren = useCallback(() => {
+        if (sirenActive) {
+            if (sirenAudioRef.current) {
+                sirenAudioRef.current.pause();
+                sirenAudioRef.current = null;
+            }
+            setSirenActive(false);
+        } else {
+            const audio = new Audio('https://assets.mixkit.co/sfx/preview/mixkit-police-siren-loop-1602.mp3');
+            audio.loop = true;
+            audio.volume = 0.3;
+            audio.play().catch(() => {});
+            sirenAudioRef.current = audio;
+            setSirenActive(true);
+        }
+    }, [sirenActive]);
+
+    // Cleanup siren on unmount or phase change away from gameplay
+    useEffect(() => {
+        if (phase === 'config' || phase === 'complete' || phase === 'shop') {
+            if (sirenAudioRef.current) {
+                sirenAudioRef.current.pause();
+                sirenAudioRef.current = null;
+                setSirenActive(false);
+            }
+        }
+    }, [phase]);
 
     useEffect(() => {
         if (phase === 'showing' && plates[level]) {
@@ -675,6 +705,19 @@ const LicensePlateMode: React.FC<LicensePlateModeProps> = ({ onClose }) => {
                     </div>
 
                     <div className="flex items-center gap-2">
+                        {(phase === 'showing' || phase === 'recall') && (
+                            <button 
+                                onClick={toggleSiren} 
+                                className={`w-9 h-9 border rounded-xl flex items-center justify-center transition-all ${
+                                    sirenActive 
+                                        ? 'bg-red-500 border-red-400 text-white animate-pulse' 
+                                        : theme === 'officer' ? 'bg-white/5 border-white/10 text-gray-400 hover:text-red-400' : 'bg-gray-50 border-gray-200 text-gray-500 hover:text-red-600'
+                                }`}
+                                title="Alternar Sirene"
+                            >
+                                <Volume2 size={18} className={sirenActive ? 'animate-bounce' : ''} />
+                            </button>
+                        )}
                         <button onClick={() => setPhase('shop')} className={`w-9 h-9 border rounded-xl flex items-center justify-center transition-all ${
                             theme === 'officer' ? 'bg-white/5 border-white/10 text-gray-400 hover:text-indigo-400' : 'bg-gray-50 border-gray-200 text-gray-500 hover:text-indigo-600'
                         }`}>
@@ -887,6 +930,7 @@ const LicensePlateMode: React.FC<LicensePlateModeProps> = ({ onClose }) => {
                 }`}>
                     <span>STATUS: {phase.toUpperCase()}</span>
                     <div className="flex gap-6">
+                        <span className={sirenActive ? 'text-red-500 animate-pulse' : ''}>SIREN: {sirenActive ? 'ON' : 'OFF'}</span>
                         <span>AUDIO: ENGINE_LOOP_ON</span>
                         <span>MIC: {micActive ? 'ACTIVE' : 'IDLE'}</span>
                         <span>SIGNAL: 100%</span>
