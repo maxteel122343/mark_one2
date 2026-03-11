@@ -230,15 +230,14 @@ const LicensePlateMode: React.FC<LicensePlateModeProps> = ({ onClose }) => {
     const startCountdown = useCallback((seconds: number, onEnd: () => void) => {
         clearTimerInterval();
         setTimer(seconds);
+        let current = seconds;
         timerRef.current = setInterval(() => {
-            setTimer(prev => {
-                if (prev <= 1) {
-                    clearTimerInterval();
-                    onEnd();
-                    return 0;
-                }
-                return prev - 1;
-            });
+            current -= 1;
+            setTimer(current);
+            if (current <= 0) {
+                clearTimerInterval();
+                onEnd();
+            }
         }, 1000);
     }, []);
 

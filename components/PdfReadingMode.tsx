@@ -185,9 +185,11 @@ const PdfReadingMode: React.FC<PdfReadingModeProps> = ({ onClose, initialFile })
         globalIntervalRef.current = setInterval(() => {
             setGlobalTimer(prev => {
                 if (prev <= 1) {
-                    clearAllTimers();
-                    setIsPlaying(false);
-                    setPhase('recall');
+                    setTimeout(() => {
+                        clearAllTimers();
+                        setIsPlaying(false);
+                        setPhase('recall');
+                    }, 0);
                     return 0;
                 }
                 return prev - 1;
@@ -198,7 +200,7 @@ const PdfReadingMode: React.FC<PdfReadingModeProps> = ({ onClose, initialFile })
         lapIntervalRef.current = setInterval(() => {
             setLapTimer(prev => {
                 if (prev <= 1) {
-                    advanceLine();
+                    setTimeout(() => advanceLine(), 0);
                     return config.lapTimeSecs;
                 }
                 return prev - 1;
