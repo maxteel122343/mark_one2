@@ -33,7 +33,7 @@ import DreamSprintModal from './components/DreamSprintModal';
 import PackGalleryModal from './components/PackGalleryModal';
 import CanvasControlModal from './components/CanvasControlModal';
 import { Share2, Phone } from 'lucide-react';
-import MetronomePanel from './components/MetronomePanel';
+import MetronomePanel, { MetronomeHandle } from './components/MetronomePanel';
 import LicensePlateMode from './components/LicensePlateMode';
 import DotFocusMode from './components/DotFocusMode';
 
@@ -105,6 +105,7 @@ function App() {
     const [isMetronomeOpen, setIsMetronomeOpen] = useState(false);
     const [isLicensePlateModeOpen, setIsLicensePlateModeOpen] = useState(false);
     const [isDotFocusModeOpen, setIsDotFocusModeOpen] = useState(false);
+    const metronomeRef = useRef<MetronomeHandle>(null);
 
     // Wrapper for speakText to always use the user-selected voice
     const speakText = useCallback((text: string) => {
@@ -3229,11 +3230,26 @@ function App() {
     const activeTask = cards.find(c => c.status === 'active');
     const nextTask = !activeTask ? cards.find(c => c.status === 'pending') : null;
 
+    // Metronome card trigger
+    useEffect(() => {
+        if (activeTask) {
+            metronomeRef.current?.triggerForCard();
+        }
+    }, [activeTask?.id]);
+
     // Schedule Stats
     const scheduledTaskCount = cards.filter(c => c.scheduledStart).length;
 
     return (
         <div className="w-screen h-screen bg-[#fafafa] overflow-hidden relative font-sans text-gray-900">
+            {/* Always-mounted Metronome Panel (background mode support) */}
+            <div className={`absolute top-[4.5rem] right-4 z-[200] ${isMetronomeOpen ? '' : 'pointer-events-none opacity-0 scale-95'} transition-all duration-200`}>
+                <MetronomePanel
+                    ref={metronomeRef}
+                    isVisible={isMetronomeOpen}
+                    onClose={() => setIsMetronomeOpen(false)}
+                />
+            </div>
             {/* Global Tag Search Overlay */}
             {!isFocusMode && (
                 <div className="absolute top-6 left-1/2 -translate-x-1/2 z-[60] flex items-center gap-2 group">
@@ -3280,23 +3296,16 @@ function App() {
                             <Activity size={18} />
                         </button>
                         {/* Metronome Button */}
-                        <div className="relative">
-                            <button
-                                onClick={() => setIsMetronomeOpen(prev => !prev)}
-                                className={`p-2.5 rounded-full transition-all flex items-center justify-center ${isMetronomeOpen
-                                    ? 'bg-violet-600 text-white shadow-lg shadow-violet-500/30'
-                                    : 'bg-white/80 backdrop-blur-md border border-white/20 text-gray-600 hover:text-violet-500 shadow-xl'
-                                    }`}
-                                title="Metrônomo"
-                            >
-                                <Music2 size={18} />
-                            </button>
-                            {isMetronomeOpen && (
-                                <div className="absolute top-full mt-3 right-0 z-[200]">
-                                    <MetronomePanel onClose={() => setIsMetronomeOpen(false)} />
-                                </div>
-                            )}
-                        </div>
+                        <button
+                            onClick={() => setIsMetronomeOpen(prev => !prev)}
+                            className={`p-2.5 rounded-full transition-all flex items-center justify-center ${isMetronomeOpen
+                                ? 'bg-violet-600 text-white shadow-lg shadow-violet-500/30'
+                                : 'bg-white/80 backdrop-blur-md border border-white/20 text-gray-600 hover:text-violet-500 shadow-xl'
+                                }`}
+                            title="Metrônomo"
+                        >
+                            <Music2 size={18} />
+                        </button>
                         {/* License Plate Memory Button */}
                         <button
                             onClick={() => setIsLicensePlateModeOpen(true)}
