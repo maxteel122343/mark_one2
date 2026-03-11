@@ -18,7 +18,7 @@ import SidebarSettingsModal from './components/SidebarSettingsModal';
 import { SidebarSettings } from './types';
 import { getTaskSuggestions, AiAction, speakText as serviceSpeakText, connectLiveSession, optimizeTaskSchedule, estimateTaskDuration, setGeminiApiKey, validateApiKey, scheduleTasks, getDreamInteractionResponse } from './services/geminiService';
 import ApiKeyModal from './components/ApiKeyModal';
-import { Plus, Image as ImageIcon, Search, Filter, MessageSquare, Target, List, ListOrdered, Mic, Send, X, CornerDownRight, Spline, Minus, Activity, Type, MicOff, Calendar, Folder, Maximize2, Minimize2, ChevronLeft, ChevronRight, Square, Lock, Unlock, Headphones, CalendarCheck2, Settings, Layers, Eye, AudioLines, StickyNote, Keyboard, ScrollText, CalendarDays, CalendarRange, LogOut, LogIn, Tag, Zap, User, TrendingUp, Cloud, Film, Video, Package, Bell, Play, BarChart3, Trash2, CloudUpload, ZoomIn, ZoomOut, Wrench, Bot } from 'lucide-react';
+import { Plus, Image as ImageIcon, Search, Filter, MessageSquare, Target, List, ListOrdered, Mic, Send, X, CornerDownRight, Spline, Minus, Activity, Type, MicOff, Calendar, Folder, Maximize2, Minimize2, ChevronLeft, ChevronRight, Square, Lock, Unlock, Headphones, CalendarCheck2, Settings, Layers, Eye, AudioLines, StickyNote, Keyboard, ScrollText, CalendarDays, CalendarRange, LogOut, LogIn, Tag, Zap, User, TrendingUp, Cloud, Film, Video, Package, Bell, Play, BarChart3, Trash2, CloudUpload, ZoomIn, ZoomOut, Wrench, Bot, Music2 } from 'lucide-react';
 import { useAuth } from './contexts/AuthContext';
 import { AuthUI } from './components/Auth';
 import { persistenceService } from './services/persistenceService';
@@ -33,6 +33,7 @@ import DreamSprintModal from './components/DreamSprintModal';
 import PackGalleryModal from './components/PackGalleryModal';
 import CanvasControlModal from './components/CanvasControlModal';
 import { Share2, Phone } from 'lucide-react';
+import MetronomePanel from './components/MetronomePanel';
 
 
 
@@ -99,6 +100,7 @@ function App() {
         activeLabel: null
     });
     const [isFastMode, setIsFastMode] = useState(false);
+    const [isMetronomeOpen, setIsMetronomeOpen] = useState(false);
 
     // Wrapper for speakText to always use the user-selected voice
     const speakText = useCallback((text: string) => {
@@ -3273,6 +3275,24 @@ function App() {
                         >
                             <Activity size={18} />
                         </button>
+                        {/* Metronome Button */}
+                        <div className="relative">
+                            <button
+                                onClick={() => setIsMetronomeOpen(prev => !prev)}
+                                className={`p-2.5 rounded-full transition-all flex items-center justify-center ${isMetronomeOpen
+                                    ? 'bg-violet-600 text-white shadow-lg shadow-violet-500/30'
+                                    : 'bg-white/80 backdrop-blur-md border border-white/20 text-gray-600 hover:text-violet-500 shadow-xl'
+                                    }`}
+                                title="Metrônomo"
+                            >
+                                <Music2 size={18} />
+                            </button>
+                            {isMetronomeOpen && (
+                                <div className="absolute top-full mt-3 right-0 z-[200]">
+                                    <MetronomePanel onClose={() => setIsMetronomeOpen(false)} />
+                                </div>
+                            )}
+                        </div>
                     </div>
                 </div>
             )}
