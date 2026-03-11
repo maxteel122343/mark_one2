@@ -3,7 +3,7 @@ import {
     X, Play, Square, Mic, MicOff, Settings, Check, ChevronRight,
     Eye, EyeOff, RotateCcw, AlertCircle, Trophy, ChevronDown, ChevronUp,
     List, Pause, Coins, ShoppingBag, Music, Shield, Volume2, Search,
-    Flame, Zap, User, Star
+    Flame, Zap, User, Star, Languages, MessageSquare, Headphones, Car
 } from 'lucide-react';
 
 // ─────────────────────────────────────────────
@@ -14,10 +14,37 @@ const ANIMATIONS = `
     0% { transform: translateX(0); }
     100% { transform: translateX(-50%); }
   }
+  @keyframes vibration {
+    0%, 100% { transform: translate(0,0) rotate(0); }
+    25% { transform: translate(2px, 1px) rotate(0.5deg); }
+    50% { transform: translate(-1px, -2px) rotate(-1deg); }
+    75% { transform: translate(2px, -1px) rotate(1deg); }
+  }
+  @keyframes rainfall {
+    0% { transform: translateY(-20px) rotate(15deg); opacity: 0; }
+    50% { opacity: 0.6; }
+    100% { transform: translateY(120px) rotate(15deg); opacity: 0; }
+  }
   .animate-marquee {
     display: flex;
     width: max-content;
     animation: marquee 20s linear infinite;
+  }
+  .animate-vibration {
+    animation: vibration 0.2s linear infinite;
+  }
+  .rain-overlay {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    overflow: hidden;
+  }
+  .raindrop {
+    position: absolute;
+    width: 1px;
+    height: 15px;
+    background: linear-gradient(to bottom, transparent, rgba(255,255,255,0.6));
+    animation: rainfall 0.5s linear infinite;
   }
 `;
 
@@ -50,16 +77,79 @@ interface PlateInstance {
 // Types
 // ─────────────────────────────────────────────
 interface PlateConfig {
-    totalPlates: number;        // total unique plates in session
-    showNewPlateSecs: number;   // seconds new plate is shown before recall
+    totalPlates: number;        // total unique items in session
+    showNewPlateSecs: number;   // seconds item is shown before recall
     vocalTimeSecs: number;      // seconds user has to vocalize each recall round
-    repsPerPlate: number;       // times each plate must be spoken/typed per round
+    repsPerPlate: number;       // times each item must be spoken/typed per round
     maxAttempts: number;        // attempts per vocalization
-    maskPlates: boolean;        // if true, plates are hidden during recall
-    cumulative: boolean;        // if true, all previous plates are recalled
-    accumulationWindow: number; // 0 for all, >0 for last N plates
-    autoAdvanceOnFail: boolean; // if true, move to next plate after fail
+    maskPlates: boolean;        // if true, items are hidden during recall
+    cumulative: boolean;        // if true, all previous items are recalled
+    accumulationWindow: number; // 0 for all, >0 for last N items
+    autoAdvanceOnFail: boolean; // if true, move to next item after fail
+    mode: 'plates' | 'phrases';
+    language: 'PT' | 'EN' | 'ES' | 'FR';
+    weather: 'none' | 'rain' | 'night';
+    motion: boolean;
+    aiVoice: boolean;
 }
+
+const EVIDENCES = [
+    { id: 'speed', name: 'Excesso de Velocidade', icon: <Flame size={12} />, points: 30, tag: "Speeding" },
+    { id: 'light', name: 'Lanterna Quebrada', icon: <Zap size={12} />, points: 30, tag: "Broken Light" },
+    { id: 'belt', name: 'Sem Cinto', icon: <User size={12} />, points: 30, tag: "No Seatbelt" },
+    { id: 'phone', name: 'Uso de Celular', icon: <MessageSquare size={12} />, points: 50, tag: "Phone Usage" },
+];
+
+const LANGUAGE_PHRASES = {
+    EN: [
+        "Why run so fast, sir?",
+        "Please, show me your driver's license.",
+        "Give me the documents of your car.",
+        "Have you been drinking tonight?",
+        "Step out of the vehicle, please.",
+        "This is a restricted area.",
+        "Your tail light is broken.",
+        "Follow the white line.",
+        "Keep your hands on the steering wheel.",
+        "I'm issuing a warning."
+    ],
+    PT: [
+        "Por que estava correndo tanto, senhor?",
+        "Por favor, me mostre sua habilitação.",
+        "Apresente os documentos do veículo.",
+        "Você bebeu alguma coisa hoje?",
+        "Saia do veículo, por favor.",
+        "Esta é uma área restrita.",
+        "Sua lanterna traseira está quebrada.",
+        "Siga a linha branca.",
+        "Mantenha as mãos no volante.",
+        "Estou aplicando uma advertência."
+    ],
+    ES: [
+        "¿Por qué corre tanto, señor?",
+        "Por favor, muéstreme su licencia.",
+        "Entrégueme los documentos del coche.",
+        "¿Ha estado bebiendo esta noche?",
+        "Salga del vehículo, por favor.",
+        "Esta es una zona restringida.",
+        "Su luz trasera está rota.",
+        "Siga la línea blanca.",
+        "Mantenga as manos en el volante.",
+        "Le estoy dando una advertencia."
+    ],
+    FR: [
+        "Pourquoi roulez-vous si vite, monsieur ?",
+        "S'il vous plaît, montrez-moi votre permis.",
+        "Donnez-moi les papiers du véhicule.",
+        "Avez-vous bu ce soir ?",
+        "Sortez du véhicule, s'il vous plaît.",
+        "C'est une zone réglementée.",
+        "Votre feu arrière est cassé.",
+        "Suivez la ligne blanche.",
+        "Gardez les mains sur le volant.",
+        "Je vous donne un avertissement."
+    ]
+};
 
 type Phase = 'config' | 'intro' | 'idle' | 'showing' | 'recall' | 'success' | 'fail' | 'complete' | 'shop';
 type Theme = 'classic' | 'officer';
@@ -75,13 +165,21 @@ const rD = () => DIGITS[Math.floor(Math.random() * DIGITS.length)];
 const genMercosulPlate = () => `${rL()}${rL()}${rL()}${rD()}${rL()}${rD()}${rD()}`;
 const genOldPlate = () => `${rL()}${rL()}${rL()}-${rD()}${rD()}${rD()}${rD()}`;
 
-const generatePlates = (count: number, unlockedIds: string[]): PlateInstance[] =>
-    Array.from({ length: count }, () => {
+const generatePlates = (count: number, unlockedIds: string[], config: PlateConfig): PlateInstance[] => {
+    if (config.mode === 'phrases') {
+        const pool = LANGUAGE_PHRASES[config.language] || LANGUAGE_PHRASES.EN;
+        const shuffled = [...pool].sort(() => Math.random() - 0.5).slice(0, count);
+        return shuffled.map(text => ({ 
+            text, 
+            brandId: unlockedIds[Math.floor(Math.random() * unlockedIds.length)] 
+        }));
+    }
+    return Array.from({ length: count }, () => {
         const text = Math.random() > 0.45 ? genMercosulPlate() : genOldPlate();
-        // Weighted random: prefer unlocked cars
         const brandId = unlockedIds[Math.floor(Math.random() * unlockedIds.length)];
         return { text, brandId };
     });
+};
 
 // ─────────────────────────────────────────────
 // Matching helpers
@@ -134,23 +232,39 @@ interface PlateProps {
     hidden?: boolean;
     checked?: boolean;
     active?: boolean;
+    weather?: 'none' | 'rain' | 'night';
+    motion?: boolean;
 }
 
-const PlateDisplay: React.FC<PlateProps> = ({ plate, size = 'lg', hidden = false, checked = false, active = false, brandId }) => {
+const PlateDisplay: React.FC<PlateProps> = ({ plate, size = 'lg', hidden = false, checked = false, active = false, brandId, weather = 'none', motion = false }) => {
     const isMercosul = !/^\w{3}-\d{4}$/.test(plate);
     const brand = CAR_BRANDS.find(b => b.id === brandId);
 
     const sizes = {
-        sm:  { box: 'w-24 h-14', font: 'text-xs', top: 'text-[6px]', bot: 'text-[5px]' },
-        md:  { box: 'w-36 h-20', font: 'text-base', top: 'text-[7px]', bot: 'text-[6px]' },
-        lg:  { box: 'w-64 h-32', font: 'text-3xl', top: 'text-[9px]', bot: 'text-[8px]' },
-        xl:  { box: 'w-80 h-40', font: 'text-5xl', top: 'text-xs', bot: 'text-[9px]' },
+        sm:  { box: 'w-24 h-14', font: 'text-[10px]', top: 'text-[6px]', bot: 'text-[5px]' },
+        md:  { box: 'w-36 h-20', font: 'text-xs', top: 'text-[7px]', bot: 'text-[6px]' },
+        lg:  { box: 'w-64 h-32', font: 'text-sm px-4', top: 'text-[9px]', bot: 'text-[8px]' },
+        xl:  { box: 'w-80 min-h-40 py-8 px-6', font: 'text-2xl px-2', top: 'text-xs', bot: 'text-[9px]' },
     };
     const s = sizes[size];
 
     return (
-        <div className={`relative ${s.box} rounded-xl overflow-hidden border-4 ${active ? 'border-yellow-400 shadow-[0_0_40px_rgba(250,204,21,0.5)]' : 'border-white/80'} transition-all duration-300 select-none shadow-2xl`}
+        <div className={`relative ${s.box} rounded-xl overflow-hidden border-4 ${active ? 'border-yellow-400 shadow-[0_0_40px_rgba(250,204,21,0.5)]' : 'border-white/80'} transition-all duration-300 select-none shadow-2xl ${motion && active ? 'animate-vibration' : ''}`}
             style={{ background: 'linear-gradient(135deg, #fff 0%, #f0f0e8 100%)' }}>
+
+            {/* Weather: Night Overlay */}
+            {weather === 'night' && (
+                <div className="absolute inset-0 bg-blue-950/40 z-30 pointer-events-none mix-blend-multiply" />
+            )}
+
+            {/* Weather: Rain Overlay */}
+            {weather === 'rain' && (
+                <div className="rain-overlay z-40">
+                    {Array.from({ length: 20 }).map((_, i) => (
+                        <div key={i} className="raindrop" style={{ left: `${Math.random()*100}%`, animationDelay: `${Math.random()*2}s`, top: `${Math.random()*100}%` }} />
+                    ))}
+                </div>
+            )}
             
             {/* Brand indicator */}
             {brand && !hidden && (
@@ -178,7 +292,7 @@ const PlateDisplay: React.FC<PlateProps> = ({ plate, size = 'lg', hidden = false
                         {brand && size !== 'sm' && (
                             <span className="text-[8px] font-black text-gray-400 uppercase tracking-widest mb-1">{brand.name}</span>
                         )}
-                        <span className={`${s.font} font-black text-gray-900 tracking-[0.15em]`}>{plate}</span>
+                        <span className={`${s.font} font-black text-gray-900 tracking-tight leading-tight text-center uppercase`}>{plate}</span>
                     </>
                 )}
             </div>
@@ -295,6 +409,7 @@ interface ConfigPanelProps {
 }
 
 const ConfigPanel: React.FC<ConfigPanelProps> = ({ config, theme, feedbacks, onChange, onStart }) => {
+    const [tab, setTab] = useState<'mission' | 'language'>('mission');
     const set = (key: keyof PlateConfig, val: any) =>
         onChange({ ...config, [key]: val });
 
@@ -331,33 +446,97 @@ const ConfigPanel: React.FC<ConfigPanelProps> = ({ config, theme, feedbacks, onC
                 </div>
             )}
 
-            <div>
-                <p className="text-[10px] font-black text-indigo-500 uppercase tracking-[0.25em] mb-1">Configurar Missão</p>
-                <h2 className={`text-2xl font-black uppercase tracking-tight flex items-center gap-2 ${theme === 'officer' ? 'text-white' : 'text-gray-900'}`}>Oficial de Trânsito</h2>
-                <p className={`text-sm mt-1 leading-relaxed ${theme === 'officer' ? 'text-gray-400' : 'text-gray-500'}`}>
-                    Anoter as placas dos infratores. Ganhe moedas para equipar sua viatura com novos motores.
-                </p>
+            <div className="flex gap-2 p-1 bg-black/10 rounded-2xl">
+                <button onClick={() => setTab('mission')} className={`flex-1 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${tab === 'mission' ? 'bg-indigo-600 text-white shadow-lg' : 'text-gray-400'}`}>Treino de Placas</button>
+                <button onClick={() => setTab('language')} className={`flex-1 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${tab === 'language' ? 'bg-indigo-600 text-white shadow-lg' : 'text-gray-400'}`}>Treino de Idioma</button>
             </div>
 
-            <div className={`rounded-3xl border shadow-sm px-5 py-2 ${theme === 'officer' ? 'bg-white/5 border-white/10' : 'bg-white border-gray-100'}`}>
-                <Row label="Infratores" sub="Total de placas na missão" k="totalPlates" min={2} max={20} />
-                <Row label="Tempo de Avistamento" sub="Tempo para memorizar o veículo" k="showNewPlateSecs" min={2} max={30} suffix="s" />
-                <Row label="Tempo de Registro" sub="Tempo para registrar no sistema" k="vocalTimeSecs" min={10} max={120} step={5} suffix="s" />
-                <Row label="Repetições" sub="Confirmações necessárias no teclado" k="repsPerPlate" min={1} max={5} />
-                <Row label="Tentativas" sub="Chances de erro na voz/digitação" k="maxAttempts" min={1} max={10} />
-                
-                <div className={`mt-2 pt-2 border-t ${theme === 'officer' ? 'border-white/5' : 'border-gray-50'}`}>
-                    <div className="flex items-center justify-between py-2">
-                        <span className={`text-sm font-black ${theme === 'officer' ? 'text-gray-200' : 'text-gray-800'}`}>Modo Cumulativo</span>
-                        <button onClick={() => set('cumulative', !config.cumulative)} className={`w-12 h-6 rounded-full relative transition-all ${config.cumulative ? 'bg-indigo-600' : 'bg-gray-200'}`}>
-                            <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${config.cumulative ? 'left-7' : 'left-1'}`} />
-                        </button>
+            {tab === 'mission' ? (
+                <>
+                    <div>
+                        <p className="text-[10px] font-black text-indigo-500 uppercase tracking-[0.25em] mb-1">Configurar Missão</p>
+                        <h2 className={`text-2xl font-black uppercase tracking-tight flex items-center gap-2 ${theme === 'officer' ? 'text-white' : 'text-gray-900'}`}>Oficial de Trânsito</h2>
+                        <p className={`text-sm mt-1 leading-relaxed ${theme === 'officer' ? 'text-gray-400' : 'text-gray-500'}`}>
+                            Anoter as placas dos infratores. Ganhe moedas para equipar sua viatura com novos motores.
+                        </p>
                     </div>
-                </div>
-            </div>
+
+                    <div className={`rounded-3xl border shadow-sm px-5 py-2 ${theme === 'officer' ? 'bg-white/5 border-white/10' : 'bg-white border-gray-100'}`}>
+                        <Row label="Infratores" sub="Total de placas na missão" k="totalPlates" min={2} max={20} />
+                        <Row label="Tempo de Avistamento" sub="Tempo para memorizar o veículo" k="showNewPlateSecs" min={2} max={30} suffix="s" />
+                        <Row label="Tempo de Registro" sub="Tempo para registrar no sistema" k="vocalTimeSecs" min={10} max={120} step={5} suffix="s" />
+                        <Row label="Repetições" sub="Confirmações necessárias no teclado" k="repsPerPlate" min={1} max={5} />
+                        <Row label="Tentativas" sub="Chances de erro na voz/digitação" k="maxAttempts" min={1} max={10} />
+                        
+                        <div className={`mt-2 pt-2 border-t ${theme === 'officer' ? 'border-white/5' : 'border-gray-50'}`}>
+                            <div className="flex items-center justify-between py-2">
+                                <span className={`text-sm font-black ${theme === 'officer' ? 'text-gray-200' : 'text-gray-800'}`}>Modo Cumulativo</span>
+                                <button onClick={() => set('cumulative', !config.cumulative)} className={`w-12 h-6 rounded-full relative transition-all ${config.cumulative ? 'bg-indigo-600' : 'bg-gray-200'}`}>
+                                    <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${config.cumulative ? 'left-7' : 'left-1'}`} />
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </>
+            ) : (
+                <>
+                    <div>
+                        <p className="text-[10px] font-black text-indigo-500 uppercase tracking-[0.25em] mb-1">Academia de Polícia</p>
+                        <h2 className={`text-2xl font-black uppercase tracking-tight flex items-center gap-2 ${theme === 'officer' ? 'text-white' : 'text-gray-900'}`}>Treinamento Multilíngue</h2>
+                        <p className={`text-sm mt-1 leading-relaxed ${theme === 'officer' ? 'text-gray-400' : 'text-gray-500'}`}>
+                            Aprenda frases essenciais para abordagens internacionais. Memorize e pronuncie como um nativo.
+                        </p>
+                    </div>
+
+                    <div className={`rounded-3xl border shadow-sm px-5 py-4 flex flex-col gap-4 ${theme === 'officer' ? 'bg-white/5 border-white/10' : 'bg-white border-gray-100'}`}>
+                        <p className={`text-[10px] font-black uppercase tracking-widest ${theme === 'officer' ? 'text-gray-500' : 'text-gray-400'}`}>Selecione o Idioma Alvo</p>
+                        <div className="grid grid-cols-2 gap-2">
+                            {['EN', 'PT', 'ES', 'FR'].map(lang => (
+                                <button key={lang} onClick={() => { set('language', lang); set('mode', 'phrases'); }} 
+                                    className={`py-3 rounded-2xl font-black transition-all ${config.language === lang && config.mode === 'phrases' ? 'bg-indigo-600 text-white shadow-lg' : theme === 'officer' ? 'bg-white/5 text-gray-400' : 'bg-gray-50 text-gray-500'}`}>
+                                    {lang === 'EN' && '🇺🇸 English'}
+                                    {lang === 'PT' && '🇧🇷 Português'}
+                                    {lang === 'ES' && '🇪🇸 Español'}
+                                    {lang === 'FR' && '🇫🇷 Français'}
+                                </button>
+                            ))}
+                        </div>
+                        <div className={`mt-2 pt-2 border-t flex flex-col gap-2 ${theme === 'officer' ? 'border-white/5' : 'border-gray-50'}`}>
+                            <Row label="Atos de Abordagem" sub="Quantidade de frases no treino" k="totalPlates" min={2} max={10} />
+                            <Row label="Foco na Pronúncia" sub="Tempo para ler a frase" k="showNewPlateSecs" min={3} max={15} suffix="s" />
+                            
+                            <div className="flex items-center justify-between py-2">
+                                <div>
+                                    <p className={`text-sm font-black ${theme === 'officer' ? 'text-gray-200' : 'text-gray-800'}`}>Pronúncia da IA</p>
+                                    <p className="text-[10px] text-gray-500 uppercase">Ouça antes de memorizar</p>
+                                </div>
+                                <button onClick={() => set('aiVoice', !config.aiVoice)} className={`w-12 h-6 rounded-full relative transition-all ${config.aiVoice ? 'bg-indigo-600' : 'bg-gray-200'}`}>
+                                    <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${config.aiVoice ? 'left-7' : 'left-1'}`} />
+                                </button>
+                            </div>
+                        </div>
+
+                        <div className={`mt-2 pt-2 border-t flex flex-col gap-3 ${theme === 'officer' ? 'border-white/5' : 'border-gray-50'}`}>
+                            <p className={`text-[10px] font-black uppercase tracking-widest ${theme === 'officer' ? 'text-gray-500' : 'text-gray-400'}`}>Dificuldade Oficial</p>
+                            <div className="grid grid-cols-2 gap-2">
+                                <button onClick={() => set('weather', config.weather === 'rain' ? 'none' : 'rain')} className={`py-2 px-3 rounded-xl border flex items-center gap-2 transition-all ${config.weather === 'rain' ? 'bg-indigo-600 border-indigo-500 text-white' : 'bg-white/5 border-white/10 text-gray-400 hover:text-white'}`}>
+                                    <Headphones size={14} /> <span className="text-[10px] font-black uppercase">Chuva</span>
+                                </button>
+                                <button onClick={() => set('weather', config.weather === 'night' ? 'none' : 'night')} className={`py-2 px-3 rounded-xl border flex items-center gap-2 transition-all ${config.weather === 'night' ? 'bg-indigo-600 border-indigo-500 text-white' : 'bg-white/5 border-white/10 text-gray-400 hover:text-white'}`}>
+                                    <EyeOff size={14} /> <span className="text-[10px] font-black uppercase">Noite</span>
+                                </button>
+                                <button onClick={() => set('motion', !config.motion)} className={`col-span-2 py-2 px-3 rounded-xl border flex items-center justify-center gap-2 transition-all ${config.motion ? 'bg-indigo-600 border-indigo-500 text-white' : 'bg-white/5 border-white/10 text-gray-400 hover:text-white'}`}>
+                                    <Zap size={14} /> <span className="text-[10px] font-black uppercase">Viatura em Alta Velocidade</span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </>
+            )}
 
             <button onClick={onStart} className="w-full py-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl font-black text-base uppercase tracking-widest shadow-xl shadow-indigo-500/30 transition-all active:scale-[0.98] flex items-center justify-center gap-2">
-                <Shield size={18} strokeWidth={3} /> Iniciar Patrulha
+                {tab === 'language' ? <Languages size={18} strokeWidth={3} /> : <Shield size={18} strokeWidth={3} />} 
+                {tab === 'language' ? 'Iniciar Treino de Abordagem' : 'Iniciar Patrulha'}
             </button>
         </div>
     );
@@ -379,9 +558,12 @@ const LicensePlateMode: React.FC<LicensePlateModeProps> = ({ onClose }) => {
         repsPerPlate: 3,
         maxAttempts: 3,
         maskPlates: false,
-        cumulative: true,
-        accumulationWindow: 0,
         autoAdvanceOnFail: false,
+        mode: 'plates',
+        language: 'EN',
+        weather: 'none',
+        motion: false,
+        aiVoice: true,
     });
 
     const [coins, setCoins] = useState(() => Number(localStorage.getItem('mark_one_coins') || '0'));
@@ -424,6 +606,7 @@ const LicensePlateMode: React.FC<LicensePlateModeProps> = ({ onClose }) => {
     const [feedbackSubmitted, setFeedbackSubmitted] = useState(false);
     const [sirenActive, setSirenActive] = useState(false);
     const [lastHeard, setLastHeard] = useState('');
+    const [activeEvidence, setActiveEvidence] = useState<{id: string, x: number, y: number} | null>(null);
 
     // ── REFS ──
     const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -497,6 +680,16 @@ const LicensePlateMode: React.FC<LicensePlateModeProps> = ({ onClose }) => {
         }
     };
 
+    function speakPhrase(text: string, lang: string) {
+        if (!config.aiVoice) return;
+        const synth = window.speechSynthesis;
+        const utterance = new SpeechSynthesisUtterance(text);
+        const map: any = { 'EN': 'en-US', 'PT': 'pt-BR', 'ES': 'es-ES', 'FR': 'fr-FR' };
+        utterance.lang = map[lang] || 'en-US';
+        utterance.rate = 0.9;
+        synth.speak(utterance);
+    }
+
     function stopMic() {
         recognitionRef.current?.stop();
         recognitionRef.current = null;
@@ -544,11 +737,15 @@ const LicensePlateMode: React.FC<LicensePlateModeProps> = ({ onClose }) => {
         setPaused(false);
         setQIdx(0);
         setAttempts(0);
+        setActiveEvidence(null);
+        if (config.mode === 'phrases') {
+            speakPhrase(plts[lvl].text, config.language);
+        }
         startCountdown(config.showNewPlateSecs, () => beginRecall(plts, lvl));
     }
 
     function handleStart() {
-        const gen = generatePlates(config.totalPlates, unlockedCars);
+        const gen = generatePlates(config.totalPlates, unlockedCars, config);
         setPlates(gen);
         setLevel(0);
         setScore({ correct: 0, wrong: 0 });
@@ -568,6 +765,12 @@ const LicensePlateMode: React.FC<LicensePlateModeProps> = ({ onClose }) => {
             }, 1500);
         } else {
             setQIdx(nextIdx);
+            // Spawn random evidence during recall transitions
+            if (Math.random() > 0.6) {
+                const ev = EVIDENCES[Math.floor(Math.random() * EVIDENCES.length)];
+                setActiveEvidence({ id: ev.id, x: Math.random() * 80 + 10, y: Math.random() * 80 + 10 });
+                setTimeout(() => setActiveEvidence(null), 3000);
+            }
         }
     }
 
@@ -820,7 +1023,14 @@ const LicensePlateMode: React.FC<LicensePlateModeProps> = ({ onClose }) => {
                                 <h1 className={`text-4xl font-black uppercase tracking-tighter mb-2 ${theme === 'officer' ? 'text-white' : 'text-gray-900'}`}>Memorize a Placa</h1>
                                 <p className={`text-sm ${theme === 'officer' ? 'text-gray-500' : 'text-gray-400'}`}>O veículo está fugindo! Você tem {config.showNewPlateSecs}s.</p>
                             </div>
-                            <PlateDisplay plate={plates[level]?.text} brandId={plates[level]?.brandId} size="xl" active />
+                             <PlateDisplay 
+                                plate={plates[level]?.text} 
+                                brandId={plates[level]?.brandId} 
+                                size="xl" 
+                                active 
+                                weather={config.weather}
+                                motion={config.motion}
+                            />
                             <div className={`w-64 h-2 rounded-full overflow-hidden ${theme === 'officer' ? 'bg-white/10' : 'bg-gray-200'}`}>
                                 <div className="h-full bg-yellow-400 transition-all duration-1000" style={{ width: `${timerPct}%` }} />
                             </div>
@@ -852,7 +1062,26 @@ const LicensePlateMode: React.FC<LicensePlateModeProps> = ({ onClose }) => {
                                 active={!paused} 
                                 hidden={config.maskPlates} 
                                 checked={feedback === 'correct'}
+                                weather={config.weather}
+                                motion={config.motion}
                             />
+
+                            {/* Evidence Popover */}
+                            {activeEvidence && (
+                                <button 
+                                    onClick={() => {
+                                        const ev = EVIDENCES.find(e => e.id === activeEvidence.id);
+                                        if (ev) setCoins(c => c + ev.points);
+                                        setActiveEvidence(null);
+                                        flashFeedback('correct');
+                                    }}
+                                    className="absolute animate-bounce bg-yellow-400 text-gray-900 p-3 rounded-full shadow-2xl z-50 flex items-center gap-2 border-2 border-white scale-110"
+                                    style={{ left: `${activeEvidence.x}%`, top: `${activeEvidence.y}%` }}
+                                >
+                                    {EVIDENCES.find(e => e.id === activeEvidence.id)?.icon}
+                                    <span className="text-[10px] font-black uppercase whitespace-nowrap">Coletar Evidência!</span>
+                                </button>
+                            )}
 
                             <div className="w-full flex flex-col items-center gap-4">
                                 <div className="flex gap-2 w-full">
@@ -951,8 +1180,60 @@ const LicensePlateMode: React.FC<LicensePlateModeProps> = ({ onClose }) => {
                             <Trophy size={80} className="text-yellow-400" strokeWidth={1} />
                             <div>
                                 <h1 className={`text-5xl font-black uppercase tracking-tighter ${theme === 'officer' ? 'text-white' : 'text-gray-900'}`}>Capitão Honorário</h1>
-                                <p className={`mt-2 ${theme === 'officer' ? 'text-gray-400' : 'text-gray-500'}`}>Você registrou {plates.length} infrações com perfeição.</p>
+                                <p className={`mt-2 ${theme === 'officer' ? 'text-gray-400' : 'text-gray-500'}`}>Missão concluída com {plates.length} registros perfeitos.</p>
                             </div>
+
+                            {/* AI DEBRIEFING SIMULATION */}
+                            {config.mode === 'phrases' && (
+                                <div className={`w-full p-6 rounded-[32px] border text-left bg-indigo-500/10 border-indigo-500/20 animate-in slide-in-from-bottom-4 duration-700`}>
+                                    <div className="flex items-center gap-3 mb-4">
+                                        <div className="w-10 h-10 bg-indigo-600 rounded-2xl flex items-center justify-center shadow-lg shadow-indigo-500/40">
+                                            <Headphones className="text-white" size={20} />
+                                        </div>
+                                        <div>
+                                            <p className="text-[10px] font-black text-indigo-500 uppercase tracking-widest">Simulação de Rádio</p>
+                                            <h3 className={`text-base font-black uppercase tracking-tight ${theme === 'officer' ? 'text-white' : 'text-gray-900'}`}>Abordagem em Campo</h3>
+                                        </div>
+                                    </div>
+                                    
+                                    <div className="space-y-4 max-h-60 overflow-y-auto pr-2 custom-scrollbar">
+                                        <div className="flex gap-2">
+                                            <div className="w-6 h-6 rounded-full bg-gray-700 shrink-0 flex items-center justify-center text-[8px] font-black text-white">IA</div>
+                                            <div className="bg-white/5 p-3 rounded-2xl rounded-tl-none text-xs text-gray-400 italic">
+                                                "License and registration, please... Oh, wait. Why did you stop me, officer?"
+                                            </div>
+                                        </div>
+                                        <div className="flex gap-2 justify-end">
+                                            <div className="bg-indigo-600 p-3 rounded-2xl rounded-tr-none text-xs text-white font-medium">
+                                                "{plates[0]?.text}"
+                                            </div>
+                                            <div className="w-6 h-6 rounded-full bg-indigo-400 shrink-0 flex items-center justify-center text-[8px] font-black text-white">YOU</div>
+                                        </div>
+                                        <div className="flex gap-2">
+                                            <div className="w-6 h-6 rounded-full bg-gray-700 shrink-0 flex items-center justify-center text-[8px] font-black text-white">IA</div>
+                                            <div className="bg-white/5 p-3 rounded-2xl rounded-tl-none text-xs text-gray-400 italic font-medium">
+                                                "But I wasn't even over the limit! Look, I can't find the documents right now..."
+                                            </div>
+                                        </div>
+                                        <div className="flex gap-2 justify-end">
+                                            <div className="bg-indigo-600 p-3 rounded-2xl rounded-tr-none text-xs text-white font-medium">
+                                                "{plates[1]?.text}"
+                                            </div>
+                                            <div className="w-6 h-6 rounded-full bg-indigo-400 shrink-0 flex items-center justify-center text-[8px] font-black text-white">YOU</div>
+                                        </div>
+                                    </div>
+
+                                    <div className="mt-6 pt-4 border-t border-white/5">
+                                        <p className="text-[9px] font-bold text-gray-500 uppercase tracking-widest mb-2">Relatório de Performance do Comando:</p>
+                                        <div className="flex items-center gap-2">
+                                            <Zap size={14} className="text-yellow-400" />
+                                            <p className="text-xs font-medium text-gray-300">
+                                                Você manteu a autoridade mas esqueceu de pedir o teste do bafômetro. O suspeito quase fugiu pelo contexto, mas sua pronúncia foi <span className="text-emerald-400 font-bold uppercase">Excelente</span>.
+                                            </p>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
                             
                             <div className="flex items-center gap-4 bg-yellow-400/10 border-2 border-yellow-400/20 px-8 py-4 rounded-[32px]">
                                 <Coins size={32} className="text-yellow-400" />
@@ -968,7 +1249,7 @@ const LicensePlateMode: React.FC<LicensePlateModeProps> = ({ onClose }) => {
                                         <h3 className={`text-lg font-black uppercase tracking-tight ${theme === 'officer' ? 'text-white' : 'text-gray-900'}`}>Avaliação de Memória</h3>
                                     </div>
                                     <p className={`text-xs ${theme === 'officer' ? 'text-gray-400' : 'text-gray-500'}`}>
-                                        Qual melhoria você sentiu na sua memória após o exercício? Como você descreveria uma possível melhora?
+                                        Qual melhoria você sentiu na sua memória após o exercício?
                                     </p>
                                     <textarea 
                                         value={userFeedback}
@@ -993,12 +1274,12 @@ const LicensePlateMode: React.FC<LicensePlateModeProps> = ({ onClose }) => {
                                     <div className="w-16 h-16 bg-emerald-500/20 rounded-full flex items-center justify-center mx-auto mb-4">
                                         <Check size={32} className="text-emerald-500" strokeWidth={3} />
                                     </div>
-                                    <p className={`font-black uppercase tracking-tight ${theme === 'officer' ? 'text-white' : 'text-gray-900'}`}>Feedback Registrado com Sucesso!</p>
-                                    <p className="text-gray-500 text-xs mt-1">Seu relatório ajuda a aprimorar o treinamento.</p>
+                                    <p className={`font-black uppercase tracking-tight ${theme === 'officer' ? 'text-white' : 'text-gray-900'}`}>Dossiê Finalizado!</p>
+                                    <p className="text-gray-500 text-xs mt-1">Ótimo trabalho na academia, recruta.</p>
                                 </div>
                             )}
 
-                            <button onClick={handleRestart} className="px-12 py-4 bg-indigo-600/10 hover:bg-indigo-600/20 text-indigo-400 border-2 border-indigo-500/20 rounded-[24px] font-black uppercase tracking-widest transition-all mt-4">Reiniciar Sistema</button>
+                            <button onClick={handleRestart} className="px-12 py-4 bg-indigo-600/10 hover:bg-indigo-600/20 text-indigo-400 border-2 border-indigo-500/20 rounded-[24px] font-black uppercase tracking-widest transition-all mt-4">Retornar ao Quartel</button>
                         </div>
                     )}
 
