@@ -423,6 +423,7 @@ const LicensePlateMode: React.FC<LicensePlateModeProps> = ({ onClose }) => {
     const [userFeedback, setUserFeedback] = useState('');
     const [feedbackSubmitted, setFeedbackSubmitted] = useState(false);
     const [sirenActive, setSirenActive] = useState(false);
+    const [lastHeard, setLastHeard] = useState('');
 
     // ── REFS ──
     const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -570,22 +571,31 @@ const LicensePlateMode: React.FC<LicensePlateModeProps> = ({ onClose }) => {
         }
     }
 
-    function handleSpokenInput(text: string) {
+    function handleSpokenInput(text: string, isFinal: boolean = true) {
         if (phase !== 'recall' || !queue[qIdx]) return;
+        const normalized = normPlate(text);
+        if (normalized.length === 0) return;
+
         if (plateMatch(text, queue[qIdx].text)) {
             flashFeedback('correct');
             setAttempts(0);
             setCoins(c => c + 15);
             setTranscript(''); 
+            setLastHeard('');
             // Small delay to show the green checkmark
             setTimeout(() => {
                 advanceQueue(queue, qIdx + 1, level, plates);
             }, 500);
-        } else {
+        } else if (isFinal) {
+            // Only count as a "wrong" attempt if it was a final result
             setAttempts(prev => {
                 const n = prev + 1;
                 flashFeedback('wrong');
-                if (n >= config.maxAttempts) stopMic();
+                setLastHeard(text);
+                if (n >= config.maxAttempts) {
+                    stopMic();
+                    // Optionally handle auto-fail logic if enabled
+                }
                 return n;
             });
         }
@@ -594,6 +604,12 @@ const LicensePlateMode: React.FC<LicensePlateModeProps> = ({ onClose }) => {
     function startMic() {
         const SpeechRecognitionApi = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
         if (!SpeechRecognitionApi) return;
+        
+        // If already active, don't start another one
+        if (recognitionRef.current) {
+            try { recognitionRef.current.stop(); } catch(e) {}
+        }
+
         const rec = new SpeechRecognitionApi();
         rec.lang = 'pt-BR';
         rec.continuous = true;
@@ -606,7 +622,7 @@ const LicensePlateMode: React.FC<LicensePlateModeProps> = ({ onClose }) => {
             for (let i = e.resultIndex; i < e.results.length; ++i) {
                 const transcriptText = e.results[i][0].transcript;
                 if (e.results[i].isFinal) {
-                    handleSpokenInput(transcriptText);
+                    handleSpokenInput(transcriptText, true);
                     interim = '';
                 } else {
                     interim += transcriptText;
@@ -616,13 +632,36 @@ const LicensePlateMode: React.FC<LicensePlateModeProps> = ({ onClose }) => {
                 setTranscript(interim);
                 if (plateMatch(interim, queue[qIdx]?.text || '') && interim !== lastMatch) {
                     lastMatch = interim;
-                    handleSpokenInput(interim);
+                    handleSpokenInput(interim, false); // Match on interim: count as success
                 }
             }
         };
-        rec.start();
-        recognitionRef.current = rec;
-        setMicActive(true);
+
+        rec.onend = () => {
+            // Restart if we are still in recall phase and mic should be active
+            if (phase === 'recall' && micActive && !paused) {
+                try { rec.start(); } catch(e) {}
+            } else {
+                setMicActive(false);
+            }
+        };
+
+        rec.onerror = (e: any) => {
+            console.error("Mic Error:", e.error);
+            if (e.error === 'no-speech') {
+                // Ignore no-speech errors, they are common
+            } else {
+                setMicActive(false);
+            }
+        };
+
+        try {
+            rec.start();
+            recognitionRef.current = rec;
+            setMicActive(true);
+        } catch(e) {
+            console.error("Failed to start mic:", e);
+        }
     }
 
     const handleTextSubmit = () => {
@@ -858,7 +897,13 @@ const LicensePlateMode: React.FC<LicensePlateModeProps> = ({ onClose }) => {
                                         </div>
                                     </div>
                                 </div>
-                                {transcript && <p className={`${theme === 'officer' ? 'text-indigo-400' : 'text-indigo-600'} text-xs font-black italic`}>Radiopatrulha: "{transcript}"</p>}
+                                {transcript && <p className={`${theme === 'officer' ? 'text-indigo-400' : 'text-indigo-600'} animate-pulse text-xs font-black italic`}>Sintonizando: "{transcript}"</p>}
+                                {lastHeard && !transcript && (
+                                    <div className={`mt-2 py-1 px-3 rounded-lg flex items-center gap-2 ${theme === 'officer' ? 'bg-red-500/10 text-red-400' : 'bg-red-50 text-red-600'}`}>
+                                        <AlertCircle size={12} />
+                                        <p className="text-[10px] font-bold uppercase tracking-widest">Ouvido: "{lastHeard}" (Incorreto)</p>
+                                    </div>
+                                )}
                             </div>
 
                             <div className="h-8">
