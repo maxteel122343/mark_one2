@@ -18,7 +18,7 @@ import SidebarSettingsModal from './components/SidebarSettingsModal';
 import { SidebarSettings } from './types';
 import { getTaskSuggestions, AiAction, speakText as serviceSpeakText, connectLiveSession, optimizeTaskSchedule, estimateTaskDuration, setGeminiApiKey, validateApiKey, scheduleTasks, getDreamInteractionResponse } from './services/geminiService';
 import ApiKeyModal from './components/ApiKeyModal';
-import { Plus, Image as ImageIcon, Search, Filter, MessageSquare, Target, List, ListOrdered, Mic, Send, X, CornerDownRight, Spline, Minus, Activity, Type, MicOff, Calendar, Folder, Maximize2, Minimize2, ChevronLeft, ChevronRight, Square, Lock, Unlock, Headphones, CalendarCheck2, Settings, Layers, Eye, AudioLines, StickyNote, Keyboard, ScrollText, CalendarDays, CalendarRange, LogOut, LogIn, Tag, Zap, User, TrendingUp, Cloud, Film, Video, Package, Bell, Play, BarChart3, Trash2, CloudUpload, ZoomIn, ZoomOut, Wrench, Bot, Music2, Car, Crosshair } from 'lucide-react';
+import { Plus, Image as ImageIcon, Search, Filter, MessageSquare, Target, List, ListOrdered, Mic, Send, X, CornerDownRight, Spline, Minus, Activity, Type, MicOff, Calendar, Folder, Maximize2, Minimize2, ChevronLeft, ChevronRight, Square, Lock, Unlock, Headphones, CalendarCheck2, Settings, Layers, Eye, AudioLines, StickyNote, Keyboard, ScrollText, CalendarDays, CalendarRange, LogOut, LogIn, Tag, Zap, User, TrendingUp, Cloud, Film, Video, Package, Bell, Play, BarChart3, Trash2, CloudUpload, ZoomIn, ZoomOut, Wrench, Bot, Music2, Car, Crosshair, BookOpen } from 'lucide-react';
 import { useAuth } from './contexts/AuthContext';
 import { AuthUI } from './components/Auth';
 import { persistenceService } from './services/persistenceService';
@@ -36,6 +36,7 @@ import { Share2, Phone } from 'lucide-react';
 import MetronomePanel, { MetronomeHandle } from './components/MetronomePanel';
 import LicensePlateMode from './components/LicensePlateMode';
 import DotFocusMode from './components/DotFocusMode';
+import PdfReadingMode from './components/PdfReadingMode';
 
 
 
@@ -105,6 +106,7 @@ function App() {
     const [isMetronomeOpen, setIsMetronomeOpen] = useState(false);
     const [isLicensePlateModeOpen, setIsLicensePlateModeOpen] = useState(false);
     const [isDotFocusModeOpen, setIsDotFocusModeOpen] = useState(false);
+    const [isPdfReadingModeOpen, setIsPdfReadingModeOpen] = useState(false);
     const metronomeRef = useRef<MetronomeHandle>(null);
 
     // Wrapper for speakText to always use the user-selected voice
@@ -1992,8 +1994,8 @@ function App() {
                 idleDuration: metadata?.idleDuration || 0
             };
 
-            const updated = prev.map(c => c.id === id ? { 
-                ...c, 
+            const updated = prev.map(c => c.id === id ? {
+                ...c,
                 status: 'pending',
                 completionHistory: [...(c.completionHistory || []), newRecord]
             } as CardData : c);
@@ -2119,9 +2121,9 @@ function App() {
                 idleDuration: metadata?.idleDuration || 0
             };
 
-            const updated = prev.map(c => c.id === id ? { 
-                ...c, 
-                status: 'skipped', 
+            const updated = prev.map(c => c.id === id ? {
+                ...c,
+                status: 'skipped',
                 timerRemaining: 0,
                 completionHistory: [...(c.completionHistory || []), newRecord]
             } as CardData : c);
@@ -3322,6 +3324,14 @@ function App() {
                         >
                             <Crosshair size={18} />
                         </button>
+                        {/* PDF Reading Mode Button */}
+                        <button
+                            onClick={() => setIsPdfReadingModeOpen(true)}
+                            className="p-2.5 rounded-full transition-all flex items-center justify-center bg-white/80 backdrop-blur-md border border-white/20 text-gray-600 hover:text-emerald-500 shadow-xl"
+                            title="Leitura Ativa com PDF"
+                        >
+                            <BookOpen size={18} />
+                        </button>
                     </div>
                 </div>
             )}
@@ -3332,6 +3342,10 @@ function App() {
             {/* Dot Focus Mode */}
             {isDotFocusModeOpen && (
                 <DotFocusMode onClose={() => setIsDotFocusModeOpen(false)} />
+            )}
+            {/* PDF Reading Mode */}
+            {isPdfReadingModeOpen && (
+                <PdfReadingMode onClose={() => setIsPdfReadingModeOpen(false)} />
             )}
             {/* Dotted Grid Background */}
             <div
