@@ -3476,6 +3476,15 @@ const CardNode: React.FC<CardNodeProps> = React.memo(({
                                     </button>
                                 </div>
 
+                                {/* History Icon */}
+                                <button
+                                    onClick={(e) => { e.stopPropagation(); setShowCompletionHistory(true); }}
+                                    className="w-7 h-7 rounded-full bg-blue-50 text-blue-500 flex items-center justify-center hover:bg-blue-500 hover:text-white transition-all transform active:scale-95 shadow-sm"
+                                    title="Histórico de Finalização"
+                                >
+                                    <ClipboardCheck size={14} strokeWidth={2.5} />
+                                </button>
+
                                 <div className="w-[1px] h-3 bg-gray-100 mx-1" />
 
                                 {/* Performance Records */}
@@ -3890,6 +3899,15 @@ const CardNode: React.FC<CardNodeProps> = React.memo(({
                                 <button onClick={(e) => { e.stopPropagation(); setIsEditing(true); }} className="px-3 py-1.5 hover:bg-gray-50 text-gray-400 hover:text-amber-500 transition-colors" title="Edit">
                                     <Edit3 size={20} strokeWidth={1.5} />
                                 </button>
+
+                                <button
+                                    onClick={(e) => { e.stopPropagation(); setShowCompletionHistory(true); }}
+                                    className="px-3 py-1.5 hover:bg-gray-50 text-gray-400 hover:text-emerald-500 transition-colors"
+                                    title="Histórico de Finalização"
+                                >
+                                    <ClipboardCheck size={20} strokeWidth={1.5} />
+                                </button>
+
                                 {card.lapTimeEnabled && (
                                     <button onClick={(e) => { e.stopPropagation(); setShowLapsModal(true); }} className="px-3 py-1.5 hover:bg-gray-50 text-gray-400 hover:text-blue-600 transition-colors" title="Laps History">
                                         <List size={20} strokeWidth={1.5} />
