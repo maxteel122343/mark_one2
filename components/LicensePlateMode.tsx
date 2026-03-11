@@ -1,7 +1,8 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
     X, Play, Square, Mic, MicOff, Settings, Check, ChevronRight,
-    Eye, EyeOff, RotateCcw, AlertCircle, Trophy, ChevronDown, ChevronUp
+    Eye, EyeOff, RotateCcw, AlertCircle, Trophy, ChevronDown, ChevronUp,
+    List, Pause
 } from 'lucide-react';
 
 // ─────────────────────────────────────────────
@@ -12,6 +13,8 @@ interface PlateConfig {
     showNewPlateSecs: number;   // seconds new plate is shown before recall
     vocalTimeSecs: number;      // seconds user has to vocalize each recall round
     repsPerPlate: number;       // times each plate must be spoken/typed per round
+    maxAttempts: number;        // attempts per vocalization
+    maskPlates: boolean;        // if true, plates are hidden during recall
 }
 
 type Phase = 'config' | 'idle' | 'showing' | 'recall' | 'success' | 'fail' | 'complete';
@@ -156,6 +159,20 @@ const ConfigPanel: React.FC<ConfigPanelProps> = ({ config, onChange, onStart }) 
                 <Row label="Tempo de exibição" sub="Segundos para ver a nova placa" k="showNewPlateSecs" min={2} max={30} suffix="s" />
                 <Row label="Tempo de vocalização" sub="Segundos para falar todas as placas" k="vocalTimeSecs" min={10} max={120} step={5} suffix="s" />
                 <Row label="Repetições por placa" sub="Vezes que deve falar cada placa" k="repsPerPlate" min={1} max={5} />
+                <Row label="Tentativas por rep." sub="Chances por vocalização" k="maxAttempts" min={1} max={10} />
+                
+                <div className="flex items-center justify-between gap-4 py-3 border-t border-gray-50 mt-2">
+                    <div className="flex flex-col">
+                        <span className="text-sm font-black text-gray-800">Modo Cego</span>
+                        <span className="text-[10px] text-gray-400 font-medium">Oculta a placa no recall</span>
+                    </div>
+                    <button 
+                        onClick={() => onChange({ ...config, maskPlates: !config.maskPlates })}
+                        className={`w-12 h-6 rounded-full transition-all relative ${config.maskPlates ? 'bg-indigo-600' : 'bg-gray-200'}`}
+                    >
+                        <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${config.maskPlates ? 'left-7' : 'left-1'}`} />
+                    </button>
+                </div>
             </div>
 
             {/* Summary */}
@@ -199,8 +216,12 @@ const LicensePlateMode: React.FC<LicensePlateModeProps> = ({ onClose }) => {
         showNewPlateSecs: 5,
         vocalTimeSecs: 30,
         repsPerPlate: 3,
+        maxAttempts: 3,
+        maskPlates: false,
     });
 
+    const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+    const [attempts, setAttempts] = useState(0);
     const [phase, setPhase] = useState<Phase>('config');
     const [plates, setPlates] = useState<string[]>([]);
     const [level, setLevel] = useState(0);            // current plate index (0-based)
@@ -303,6 +324,7 @@ const LicensePlateMode: React.FC<LicensePlateModeProps> = ({ onClose }) => {
         setPhase('showing');
         setPaused(false);
         setQIdx(0);
+        setAttempts(0);
         startCountdown(config.showNewPlateSecs, () => beginRecall(plts, lvl));
     };
 
@@ -310,6 +332,7 @@ const LicensePlateMode: React.FC<LicensePlateModeProps> = ({ onClose }) => {
         const q = buildQueue(plts, lvl, config.repsPerPlate);
         setQueue(q);
         setQIdx(0);
+        setAttempts(0);
         setPhase('recall');
         startCountdown(config.vocalTimeSecs, () => handleTimeFail());
 
@@ -359,9 +382,19 @@ const LicensePlateMode: React.FC<LicensePlateModeProps> = ({ onClose }) => {
         if (!queue[qIdx]) return;
         if (plateMatch(text, queue[qIdx])) {
             flashFeedback('correct');
+            setAttempts(0);
             advanceQueue(queue, qIdx + 1, level, plates);
         } else {
-            flashFeedback('wrong');
+            setAttempts(prev => {
+                const newAttempts = prev + 1;
+                if (newAttempts >= config.maxAttempts) {
+                    flashFeedback('wrong'); // Only flash 'wrong' if max attempts reached
+                    stopMic(); // Stop mic if max attempts reached
+                } else {
+                    flashFeedback('wrong'); // Flash 'wrong' for each incorrect attempt
+                }
+                return newAttempts;
+            });
         }
     };
 
@@ -391,6 +424,7 @@ const LicensePlateMode: React.FC<LicensePlateModeProps> = ({ onClose }) => {
         setLevel(0);
         setQueue([]);
         setQIdx(0);
+        setAttempts(0);
     };
 
     // Cleanup
@@ -417,50 +451,59 @@ const LicensePlateMode: React.FC<LicensePlateModeProps> = ({ onClose }) => {
         <div className="fixed inset-0 z-[300] bg-gray-950 flex overflow-hidden">
 
             {/* ── LEFT SIDEBAR: Plate timeline ── */}
-            <div className="w-40 bg-gray-900/80 border-r border-white/5 flex flex-col py-6 px-3 overflow-y-auto custom-scrollbar shrink-0">
-                <p className="text-[8px] font-black text-gray-500 uppercase tracking-[0.2em] mb-4 text-center">Placas</p>
-
-                {phase === 'config' || plates.length === 0 ? (
-                    <div className="flex-1 flex items-center justify-center text-gray-600 text-xs text-center">
-                        Configure e inicie
-                    </div>
-                ) : (
-                    <div className="space-y-3">
-                        {plates.map((plate, i) => {
-                            const isPast = i < level;
-                            const isCurrent = i === level;
-                            const isFuture = i > level;
-                            return (
-                                <div key={i} className={`flex flex-col items-center gap-1 transition-all duration-300 ${isFuture ? 'opacity-30' : ''}`}>
-                                    <div className={`text-[8px] font-black uppercase tracking-widest ${isPast ? 'text-emerald-400' : isCurrent ? 'text-yellow-400' : 'text-gray-600'}`}>
-                                        #{i + 1}
-                                    </div>
-                                    <PlateDisplay
-                                        plate={plate}
-                                        size="sm"
-                                        hidden={isFuture}
-                                        checked={isPast}
-                                        active={isCurrent}
-                                    />
-                                    {isCurrent && (
-                                        <div className="flex gap-0.5 mt-0.5">
-                                            {Array.from({ length: config.repsPerPlate }).map((_, ri) => {
-                                                const spoken = Math.min(qIdx - level * config.repsPerPlate, config.repsPerPlate);
-                                                return (
-                                                    <div key={ri} className={`w-1.5 h-1.5 rounded-full ${ri < spoken ? 'bg-emerald-400' : 'bg-gray-600'}`} />
-                                                );
-                                            })}
-                                        </div>
-                                    )}
+            <div 
+                onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+                className={`transition-all duration-300 transform ${isSidebarOpen ? 'w-40 px-3' : 'w-12 px-1'} bg-gray-900/80 border-r border-white/5 flex flex-col py-6 overflow-y-auto custom-scrollbar shrink-0 cursor-pointer hover:bg-gray-900`}
+            >
+                <div className="flex flex-col items-center">
+                    {!isSidebarOpen ? (
+                        <div className="flex flex-col gap-4 mt-4">
+                            <List size={18} className="text-indigo-400" />
+                            <div className="text-[10px] font-black text-gray-500 [writing-mode:vertical-lr] rotate-180 uppercase tracking-widest">Placas</div>
+                        </div>
+                    ) : (
+                        <>
+                            <p className="text-[8px] font-black text-gray-500 uppercase tracking-[0.2em] mb-4 text-center">Placas</p>
+                            {phase === 'config' || plates.length === 0 ? (
+                                <div className="flex-1 flex items-center justify-center text-gray-600 text-[10px] text-center px-2">
+                                    Configure e inicie
                                 </div>
-                            );
-                        })}
-                    </div>
-                )}
+                            ) : (
+                                <div className="space-y-3 w-full">
+                                    {plates.map((plate, i) => (
+                                        <div key={i} className={`flex flex-col items-center gap-1 transition-all duration-300 ${i > level ? 'opacity-30' : ''}`}>
+                                            <div className={`text-[8px] font-black uppercase tracking-widest ${i < level ? 'text-emerald-400' : i === level ? 'text-yellow-400' : 'text-gray-600'}`}>
+                                                #{i + 1}
+                                            </div>
+                                            <PlateDisplay
+                                                plate={plate}
+                                                size="sm"
+                                                hidden={i > level}
+                                                checked={i < level}
+                                                active={i === level}
+                                            />
+                                            {i === level && (
+                                                <div className="flex gap-0.5 mt-0.5">
+                                                    {Array.from({ length: config.repsPerPlate }).map((_, ri) => {
+                                                        const itemsUpToHere = queue.slice(0, qIdx);
+                                                        const plateRepsDone = itemsUpToHere.filter(p => p === plate).length;
+                                                        return (
+                                                            <div key={ri} className={`w-1.5 h-1.5 rounded-full ${ri < plateRepsDone ? 'bg-emerald-400' : 'bg-gray-600'}`} />
+                                                        );
+                                                    })}
+                                                </div>
+                                            )}
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </>
+                    )}
+                </div>
             </div>
 
             {/* ── CENTER: Main content ── */}
-            <div className="flex-1 flex flex-col items-center justify-center relative overflow-hidden">
+            <div className="flex-1 flex flex-col items-center justify-center relative overflow-hidden px-4">
 
                 {/* Close button */}
                 <button
@@ -493,8 +536,8 @@ const LicensePlateMode: React.FC<LicensePlateModeProps> = ({ onClose }) => {
 
                 {/* ── QUICK CONFIG OVERLAY ── */}
                 {showConfig && phase !== 'config' && (
-                    <div className="absolute inset-0 bg-gray-950/95 backdrop-blur z-20 flex items-center justify-center">
-                        <div className="relative">
+                    <div className="absolute inset-0 bg-gray-950/95 backdrop-blur z-20 flex items-center justify-center p-4">
+                        <div className="relative w-full max-w-sm">
                             <button onClick={() => setShowConfig(false)} className="absolute -top-3 -right-3 w-8 h-8 bg-white/10 hover:bg-white/20 rounded-full flex items-center justify-center text-white z-10">
                                 <X size={14} />
                             </button>
@@ -505,39 +548,39 @@ const LicensePlateMode: React.FC<LicensePlateModeProps> = ({ onClose }) => {
 
                 {/* ── SHOWING PHASE ── */}
                 {phase === 'showing' && (
-                    <div className="flex flex-col items-center gap-8 animate-in fade-in zoom-in-95 duration-500">
-                        <div>
-                            <p className="text-[10px] font-black text-indigo-400 uppercase tracking-[0.3em] text-center mb-2">Nova Placa — #{level + 1}</p>
-                            <p className="text-gray-400 text-sm text-center">Memorize! Você terá {config.vocalTimeSecs}s para vocalizar</p>
+                    <div className="flex flex-col items-center gap-6 md:gap-8 animate-in fade-in zoom-in-95 duration-500 w-full">
+                        <div className="text-center">
+                            <p className="text-[10px] font-black text-indigo-400 uppercase tracking-[0.3em] mb-2">Nova Placa — #{level + 1}</p>
+                            <p className="text-gray-400 text-sm">Memorize! Você terá {config.vocalTimeSecs}s para vocalizar</p>
                         </div>
 
-                        <div className="animate-pulse-slow">
+                        <div className="animate-pulse-slow max-w-full">
                             <PlateDisplay plate={plates[level]} size="xl" active />
                         </div>
 
                         {/* Countdown */}
-                        <div className="flex flex-col items-center gap-2">
-                            <div className="w-48 h-1.5 bg-white/10 rounded-full overflow-hidden">
+                        <div className="flex flex-col items-center gap-2 w-full max-w-xs">
+                            <div className="w-full h-1.5 bg-white/10 rounded-full overflow-hidden">
                                 <div
                                     className="h-full bg-yellow-400 rounded-full transition-all duration-1000"
                                     style={{ width: `${timerPct}%` }}
                                 />
                             </div>
                             <p className="text-yellow-400 font-black text-2xl tabular-nums">{timer}s</p>
-                            <p className="text-gray-500 text-xs">antes de começar a vocalização</p>
+                            <p className="text-gray-500 text-[10px] uppercase tracking-widest font-bold">Início em breve...</p>
                         </div>
                     </div>
                 )}
 
                 {/* ── RECALL PHASE ── */}
                 {phase === 'recall' && (
-                    <div className="flex flex-col items-center gap-6 w-full max-w-xl px-6 animate-in fade-in duration-300">
+                    <div className="flex flex-col items-center gap-5 md:gap-6 w-full max-w-xl px-4 animate-in fade-in duration-300">
 
                         {/* Progress bar */}
-                        <div className="w-full space-y-1">
+                        <div className="w-full space-y-2">
                             <div className="flex justify-between text-[10px] text-gray-500 font-black uppercase tracking-widest">
                                 <span>{qIdx}/{queue.length} vocalizações</span>
-                                <span className={`tabular-nums ${timer <= 10 ? 'text-red-400 animate-pulse' : 'text-indigo-400'}`}>{timer}s</span>
+                                <span className={`tabular-nums ${timer <= 10 ? 'text-red-400 animate-pulse' : 'text-indigo-400'}`}>{timer}s restante</span>
                             </div>
                             <div className="w-full h-1.5 bg-white/10 rounded-full overflow-hidden">
                                 <div className="h-full bg-indigo-500 rounded-full transition-all duration-300" style={{ width: `${progressPct}%` }} />
@@ -553,31 +596,50 @@ const LicensePlateMode: React.FC<LicensePlateModeProps> = ({ onClose }) => {
 
                         {/* Current target instruction */}
                         <div className="text-center space-y-1">
-                            <p className="text-[9px] font-black text-gray-500 uppercase tracking-[0.25em]">
-                                Repita em voz alta — {currentPlateOccurrences}/{config.repsPerPlate}
-                            </p>
-                            <p className="text-gray-300 text-sm">
-                                Fale a placa: <span className="text-yellow-300 font-black">#{queue.indexOf(currentTarget) === -1 ? '?' : plates.indexOf(currentTarget) + 1}</span>
+                            <div className="flex items-center justify-center gap-2">
+                                <div className="px-2 py-0.5 bg-indigo-500/20 rounded-md border border-indigo-500/30">
+                                    <p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest">
+                                        Repetição {currentPlateOccurrences}/{config.repsPerPlate}
+                                    </p>
+                                </div>
+                                {config.maxAttempts > 1 && (
+                                    <div className={`px-2 py-0.5 rounded-md border text-[10px] font-black uppercase tracking-widest ${attempts >= config.maxAttempts - 1 ? 'bg-red-500/20 border-red-500/30 text-red-400' : 'bg-white/10 border-white/20 text-gray-400'}`}>
+                                        Tentativa {attempts + 1}/{config.maxAttempts}
+                                    </div>
+                                )}
+                            </div>
+                            <p className="text-gray-300 text-sm mt-2">
+                                Fale a placa: <span className="text-yellow-300 font-black">#{plates.indexOf(currentTarget) + 1}</span>
                             </p>
                         </div>
 
                         {/* Current target plate */}
-                        <div className={`transition-all duration-150 ${feedback === 'correct' ? 'scale-105' : feedback === 'wrong' ? 'scale-95 opacity-50' : ''}`}>
-                            <PlateDisplay plate={currentTarget} size="xl" active={!paused} />
+                        <div className={`transition-all duration-150 max-w-full ${feedback === 'correct' ? 'scale-105' : feedback === 'wrong' ? 'scale-95 opacity-50' : ''}`}>
+                            <PlateDisplay plate={currentTarget} size="xl" active={!paused} hidden={config.maskPlates} />
                         </div>
 
-                        {/* Feedback flash */}
-                        {feedback && (
-                            <div className={`text-sm font-black uppercase tracking-widest animate-in fade-in duration-100 ${feedback === 'correct' ? 'text-emerald-400' : 'text-red-400'}`}>
-                                {feedback === 'correct' ? '✓ Correto!' : '✗ Tente novamente'}
-                            </div>
-                        )}
+                        {/* Feedback and Retry button */}
+                        <div className="h-12 flex flex-col items-center justify-center">
+                            {feedback && (
+                                <div className={`text-sm font-black uppercase tracking-widest animate-in fade-in duration-100 ${feedback === 'correct' ? 'text-emerald-400' : 'text-red-400'}`}>
+                                    {feedback === 'correct' ? '✓ Correto!' : '✗ Voz não captada'}
+                                </div>
+                            )}
+                            {attempts >= config.maxAttempts && !feedback && (
+                                <button 
+                                    onClick={() => { setAttempts(0); startMic(); }}
+                                    className="flex items-center gap-2 px-4 py-1.5 bg-red-600 hover:bg-red-500 text-white rounded-lg font-black text-[10px] uppercase tracking-widest shadow-lg shadow-red-500/20 transition-all active:scale-95 animate-in slide-in-from-bottom-2"
+                                >
+                                    <RotateCcw size={12} /> Tentar Novamente
+                                </button>
+                            )}
+                        </div>
 
-                        {/* Queue mini preview */}
-                        <div className="flex gap-2 items-center">
+                        {/* Queue mini preview (Hidden on mobile) */}
+                        <div className="hidden md:flex gap-2 items-center">
                             {queue.slice(qIdx, qIdx + 5).map((p, i) => (
                                 <div key={i} className={`transition-all ${i === 0 ? 'scale-100' : 'scale-75 opacity-40'}`}>
-                                    <PlateDisplay plate={p} size="sm" active={i === 0} />
+                                    <PlateDisplay plate={p} size="sm" active={i === 0} hidden={config.maskPlates && i === 0} />
                                 </div>
                             ))}
                             {queue.length - qIdx > 5 && (
@@ -586,57 +648,58 @@ const LicensePlateMode: React.FC<LicensePlateModeProps> = ({ onClose }) => {
                         </div>
 
                         {/* Transcript live */}
-                        {transcript && (
-                            <div className="bg-white/5 rounded-2xl px-4 py-2 border border-white/10">
-                                <p className="text-gray-300 text-sm italic">"{transcript}"</p>
-                            </div>
-                        )}
+                        <div className="h-8">
+                            {transcript && (
+                                <div className="bg-white/5 rounded-full px-4 py-1 border border-white/10 animate-in fade-in zoom-in-95">
+                                    <p className="text-gray-400 text-xs italic">Ouvindo: "{transcript}"</p>
+                                </div>
+                            )}
+                        </div>
 
                         {/* Controls */}
-                        <div className="flex items-center gap-3 w-full">
-                            {/* Text input */}
-                            <div className="flex-1 flex gap-2">
+                        <div className="flex flex-col md:flex-row items-center gap-3 w-full">
+                            <div className="flex-1 flex gap-2 w-full">
                                 <input
                                     ref={textInputRef}
                                     value={textInput}
                                     onChange={e => setTextInput(e.target.value.toUpperCase())}
                                     onKeyDown={e => e.key === 'Enter' && handleTextSubmit()}
                                     placeholder={currentTarget || 'Digite a placa...'}
-                                    className="flex-1 bg-white/10 border border-white/10 rounded-2xl px-4 py-2.5 text-white text-sm font-black tracking-widest placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 uppercase"
+                                    className="flex-1 bg-white/10 border border-white/10 rounded-xl px-4 py-3 text-white text-sm font-black tracking-widest placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 uppercase"
                                     disabled={paused}
                                 />
                                 <button
                                     onClick={handleTextSubmit}
                                     disabled={!textInput.trim() || paused}
-                                    className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-30 text-white rounded-2xl font-black text-sm transition-all active:scale-95"
+                                    className="px-4 py-3 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-30 text-white rounded-xl font-black text-sm transition-all active:scale-95"
                                 >
                                     OK
                                 </button>
                             </div>
 
-                            {/* Mic button */}
-                            <button
-                                onClick={() => micActive ? stopMic() : startMic()}
-                                disabled={paused}
-                                className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all shadow-lg active:scale-90 ${micActive
-                                    ? 'bg-red-500 shadow-red-500/30 animate-pulse'
-                                    : 'bg-white/10 hover:bg-white/20 text-gray-400 hover:text-white'
-                                }`}
-                            >
-                                {micActive ? <Mic size={20} className="text-white" /> : <MicOff size={20} />}
-                            </button>
+                            <div className="flex gap-2 shrink-0">
+                                <button
+                                    onClick={() => micActive ? stopMic() : startMic()}
+                                    disabled={paused || attempts >= config.maxAttempts}
+                                    className={`w-12 h-12 rounded-xl flex items-center justify-center transition-all shadow-lg active:scale-90 ${micActive
+                                        ? 'bg-red-500 shadow-red-500/30'
+                                        : 'bg-white/10 hover:bg-white/20 text-gray-400 hover:text-white'
+                                    } disabled:opacity-30`}
+                                >
+                                    {micActive ? <Mic size={20} className="text-white" /> : <MicOff size={20} />}
+                                </button>
 
-                            {/* Pause */}
-                            <button
-                                onClick={handlePauseToggle}
-                                className="w-12 h-12 rounded-2xl bg-white/10 hover:bg-white/20 flex items-center justify-center text-gray-400 hover:text-white transition-all active:scale-90"
-                            >
-                                {paused ? <Play size={20} /> : <Square size={20} />}
-                            </button>
+                                <button
+                                    onClick={handlePauseToggle}
+                                    className="w-12 h-12 rounded-xl bg-white/10 hover:bg-white/20 flex items-center justify-center text-gray-400 hover:text-white transition-all active:scale-90"
+                                >
+                                    {paused ? <Play size={20} /> : <Pause size={20} />}
+                                </button>
+                            </div>
                         </div>
 
                         {paused && (
-                            <p className="text-yellow-400 font-black text-sm uppercase tracking-widest animate-pulse">⏸ Pausado</p>
+                            <p className="text-yellow-400 font-black text-xs uppercase tracking-widest animate-pulse">⏸ Treino Pausado</p>
                         )}
                     </div>
                 )}
@@ -656,13 +719,13 @@ const LicensePlateMode: React.FC<LicensePlateModeProps> = ({ onClose }) => {
 
                 {/* ── FAIL PHASE ── */}
                 {phase === 'fail' && (
-                    <div className="flex flex-col items-center gap-6 animate-in zoom-in-90 fade-in duration-300">
-                        <div className="w-20 h-20 rounded-full bg-red-500/20 border-2 border-red-500 flex items-center justify-center">
-                            <AlertCircle size={40} className="text-red-400" strokeWidth={2} />
+                    <div className="flex flex-col items-center gap-6 animate-in zoom-in-90 fade-in duration-300 w-full">
+                        <div className="w-16 h-16 rounded-full bg-red-500/20 border-2 border-red-500 flex items-center justify-center">
+                            <AlertCircle size={32} className="text-red-400" strokeWidth={2} />
                         </div>
                         <div className="text-center">
-                            <p className="text-red-400 font-black text-2xl uppercase tracking-tight">Tempo Esgotado!</p>
-                            <p className="text-gray-500 text-sm mt-1">Repetindo nível {level + 1}…</p>
+                            <p className="text-red-400 font-black text-xl md:text-2xl uppercase tracking-tight">Tempo Esgotado!</p>
+                            <p className="text-gray-500 text-xs md:text-sm mt-1 px-4">Não desanime, vamos repetir o nível {level + 1}…</p>
                         </div>
                         <PlateDisplay plate={plates[level] || ''} size="lg" />
                     </div>
@@ -670,16 +733,16 @@ const LicensePlateMode: React.FC<LicensePlateModeProps> = ({ onClose }) => {
 
                 {/* ── COMPLETE PHASE ── */}
                 {phase === 'complete' && (
-                    <div className="flex flex-col items-center gap-8 animate-in zoom-in-90 fade-in duration-500">
-                        <div className="w-24 h-24 rounded-full bg-yellow-500/20 border-2 border-yellow-400 flex items-center justify-center">
+                    <div className="flex-1 overflow-y-auto w-full flex flex-col items-center py-10 px-4 animate-in zoom-in-90 fade-in duration-500">
+                        <div className="w-24 h-24 rounded-full bg-yellow-500/20 border-2 border-yellow-400 flex items-center justify-center shrink-0">
                             <Trophy size={48} className="text-yellow-400" strokeWidth={1.5} />
                         </div>
-                        <div className="text-center">
+                        <div className="text-center mt-6">
                             <p className="text-yellow-400 font-black text-3xl uppercase tracking-tight">Treino Concluído!</p>
                             <p className="text-gray-400 text-sm mt-2">Você memorizou {plates.length} placas com sucesso.</p>
                         </div>
 
-                        <div className="flex gap-4 flex-wrap justify-center">
+                        <div className="flex gap-4 flex-wrap justify-center mt-8">
                             {plates.map((p, i) => (
                                 <PlateDisplay key={i} plate={p} size="sm" checked />
                             ))}
