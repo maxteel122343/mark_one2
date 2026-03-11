@@ -18,7 +18,7 @@ import SidebarSettingsModal from './components/SidebarSettingsModal';
 import { SidebarSettings } from './types';
 import { getTaskSuggestions, AiAction, speakText as serviceSpeakText, connectLiveSession, optimizeTaskSchedule, estimateTaskDuration, setGeminiApiKey, validateApiKey, scheduleTasks, getDreamInteractionResponse } from './services/geminiService';
 import ApiKeyModal from './components/ApiKeyModal';
-import { Plus, Image as ImageIcon, Search, Filter, MessageSquare, Target, List, ListOrdered, Mic, Send, X, CornerDownRight, Spline, Minus, Activity, Type, MicOff, Calendar, Folder, Maximize2, Minimize2, ChevronLeft, ChevronRight, Square, Lock, Unlock, Headphones, CalendarCheck2, Settings, Layers, Eye, AudioLines, StickyNote, Keyboard, ScrollText, CalendarDays, CalendarRange, LogOut, LogIn, Tag, Zap, User, TrendingUp, Cloud, Film, Video, Package, Bell, Play, BarChart3, Trash2, CloudUpload, ZoomIn, ZoomOut, Wrench, Bot, Music2, Car } from 'lucide-react';
+import { Plus, Image as ImageIcon, Search, Filter, MessageSquare, Target, List, ListOrdered, Mic, Send, X, CornerDownRight, Spline, Minus, Activity, Type, MicOff, Calendar, Folder, Maximize2, Minimize2, ChevronLeft, ChevronRight, Square, Lock, Unlock, Headphones, CalendarCheck2, Settings, Layers, Eye, AudioLines, StickyNote, Keyboard, ScrollText, CalendarDays, CalendarRange, LogOut, LogIn, Tag, Zap, User, TrendingUp, Cloud, Film, Video, Package, Bell, Play, BarChart3, Trash2, CloudUpload, ZoomIn, ZoomOut, Wrench, Bot, Music2, Car, Crosshair } from 'lucide-react';
 import { useAuth } from './contexts/AuthContext';
 import { AuthUI } from './components/Auth';
 import { persistenceService } from './services/persistenceService';
@@ -35,6 +35,7 @@ import CanvasControlModal from './components/CanvasControlModal';
 import { Share2, Phone } from 'lucide-react';
 import MetronomePanel from './components/MetronomePanel';
 import LicensePlateMode from './components/LicensePlateMode';
+import DotFocusMode from './components/DotFocusMode';
 
 
 
@@ -103,6 +104,7 @@ function App() {
     const [isFastMode, setIsFastMode] = useState(false);
     const [isMetronomeOpen, setIsMetronomeOpen] = useState(false);
     const [isLicensePlateModeOpen, setIsLicensePlateModeOpen] = useState(false);
+    const [isDotFocusModeOpen, setIsDotFocusModeOpen] = useState(false);
 
     // Wrapper for speakText to always use the user-selected voice
     const speakText = useCallback((text: string) => {
@@ -3303,12 +3305,24 @@ function App() {
                         >
                             <Car size={18} />
                         </button>
+                        {/* Dot Focus Mode Button */}
+                        <button
+                            onClick={() => setIsDotFocusModeOpen(true)}
+                            className="p-2.5 rounded-full transition-all flex items-center justify-center bg-white/80 backdrop-blur-md border border-white/20 text-gray-600 hover:text-indigo-500 shadow-xl"
+                            title="Treino de Foco de Pontos"
+                        >
+                            <Crosshair size={18} />
+                        </button>
                     </div>
                 </div>
             )}
             {/* License Plate Memory Mode */}
             {isLicensePlateModeOpen && (
                 <LicensePlateMode onClose={() => setIsLicensePlateModeOpen(false)} />
+            )}
+            {/* Dot Focus Mode */}
+            {isDotFocusModeOpen && (
+                <DotFocusMode onClose={() => setIsDotFocusModeOpen(false)} />
             )}
             {/* Dotted Grid Background */}
             <div
