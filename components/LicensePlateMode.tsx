@@ -325,10 +325,10 @@ const Shop: React.FC<{
         }`}>
             <div className="flex items-center justify-between">
                 <div>
-                    <h2 className={`text-2xl font-black uppercase tracking-tight flex items-center gap-2 ${theme === 'officer' ? 'text-white' : 'text-gray-900'}`}>
-                        <ShoppingBag className="text-indigo-400" /> Garagem
+                    <h2 className={`text-xl md:text-2xl font-black uppercase tracking-tight flex items-center gap-2 ${theme === 'officer' ? 'text-white' : 'text-gray-900'}`}>
+                        <ShoppingBag className="text-indigo-400" size={20} /> Garagem
                     </h2>
-                    <p className={`text-sm ${theme === 'officer' ? 'text-gray-400' : 'text-gray-500'}`}>Desbloqueie novos sons de motor.</p>
+                    <p className={`text-[10px] md:text-sm ${theme === 'officer' ? 'text-gray-400' : 'text-gray-500'}`}>Desbloqueie novos sons de motor.</p>
                 </div>
                 <div className="flex items-center gap-3">
                     <button 
@@ -430,7 +430,7 @@ const ConfigPanel: React.FC<ConfigPanelProps> = ({ config, theme, feedbacks, onC
     );
 
     return (
-        <div className="flex flex-col gap-6 p-6 max-w-md w-full relative overflow-hidden">
+        <div className="flex flex-col gap-4 p-4 md:p-6 max-w-md w-full relative overflow-y-auto max-h-[85vh] custom-scrollbar">
             {/* Feedback Marquee */}
             {feedbacks.length > 0 && (
                 <div className={`-mx-6 -mt-6 mb-2 py-2 overflow-hidden whitespace-nowrap border-b relative ${
@@ -454,9 +454,9 @@ const ConfigPanel: React.FC<ConfigPanelProps> = ({ config, theme, feedbacks, onC
             {tab === 'mission' ? (
                 <>
                     <div>
-                        <p className="text-[10px] font-black text-indigo-500 uppercase tracking-[0.25em] mb-1">Configurar Missão</p>
-                        <h2 className={`text-2xl font-black uppercase tracking-tight flex items-center gap-2 ${theme === 'officer' ? 'text-white' : 'text-gray-900'}`}>Oficial de Trânsito</h2>
-                        <p className={`text-sm mt-1 leading-relaxed ${theme === 'officer' ? 'text-gray-400' : 'text-gray-500'}`}>
+                        <p className="text-[9px] md:text-[10px] font-black text-indigo-500 uppercase tracking-[0.25em] mb-1">Configurar Missão</p>
+                        <h2 className={`text-xl md:text-2xl font-black uppercase tracking-tight flex items-center gap-2 ${theme === 'officer' ? 'text-white' : 'text-gray-900'}`}>Oficial de Trânsito</h2>
+                        <p className={`text-xs md:text-sm mt-1 leading-relaxed ${theme === 'officer' ? 'text-gray-400' : 'text-gray-500'}`}>
                             Anoter as placas dos infratores. Ganhe moedas para equipar sua viatura com novos motores.
                         </p>
                     </div>
@@ -481,14 +481,14 @@ const ConfigPanel: React.FC<ConfigPanelProps> = ({ config, theme, feedbacks, onC
             ) : (
                 <>
                     <div>
-                        <p className="text-[10px] font-black text-indigo-500 uppercase tracking-[0.25em] mb-1">Academia de Polícia</p>
-                        <h2 className={`text-2xl font-black uppercase tracking-tight flex items-center gap-2 ${theme === 'officer' ? 'text-white' : 'text-gray-900'}`}>Treinamento Multilíngue</h2>
-                        <p className={`text-sm mt-1 leading-relaxed ${theme === 'officer' ? 'text-gray-400' : 'text-gray-500'}`}>
+                        <p className="text-[9px] md:text-[10px] font-black text-indigo-500 uppercase tracking-[0.25em] mb-1">Academia de Polícia</p>
+                        <h2 className={`text-xl md:text-2xl font-black uppercase tracking-tight flex items-center gap-2 ${theme === 'officer' ? 'text-white' : 'text-gray-900'}`}>Treinamento Multilíngue</h2>
+                        <p className={`text-xs md:text-sm mt-1 leading-relaxed ${theme === 'officer' ? 'text-gray-400' : 'text-gray-500'}`}>
                             Aprenda frases essenciais para abordagens internacionais. Memorize e pronuncie como um nativo.
                         </p>
                     </div>
 
-                    <div className={`rounded-3xl border shadow-sm px-5 py-4 flex flex-col gap-4 ${theme === 'officer' ? 'bg-white/5 border-white/10' : 'bg-white border-gray-100'}`}>
+                    <div className={`rounded-3xl border shadow-sm px-4 md:px-5 py-2 ${theme === 'officer' ? 'bg-white/5 border-white/10' : 'bg-white border-gray-100'}`}>
                         <p className={`text-[10px] font-black uppercase tracking-widest ${theme === 'officer' ? 'text-gray-500' : 'text-gray-400'}`}>Selecione o Idioma Alvo</p>
                         <div className="grid grid-cols-2 gap-2">
                             {['EN', 'PT', 'ES', 'FR'].map(lang => (
@@ -728,7 +728,18 @@ const LicensePlateMode: React.FC<LicensePlateModeProps> = ({ onClose }) => {
         setQIdx(0);
         setAttempts(0);
         setPhase('recall');
-        startCountdown(config.vocalTimeSecs, () => handleTimeFail());
+
+        // Progressive time adjustment for recall
+        let recallTime = config.vocalTimeSecs;
+        if (config.cumulative) {
+            const uniqueItems = Math.min(lvl + 1, config.accumulationWindow > 0 ? config.accumulationWindow : lvl + 1);
+            if (uniqueItems > 1) {
+                // Adds 50% of base time for each extra unique item beyond the first
+                recallTime = Math.floor(config.vocalTimeSecs * (1 + (uniqueItems - 1) * 0.5));
+            }
+        }
+
+        startCountdown(recallTime, () => handleTimeFail());
         setTimeout(() => startMic(), 200);
     }
 
@@ -741,7 +752,15 @@ const LicensePlateMode: React.FC<LicensePlateModeProps> = ({ onClose }) => {
         if (config.mode === 'phrases') {
             speakPhrase(plts[lvl].text, config.language);
         }
-        startCountdown(config.showNewPlateSecs, () => beginRecall(plts, lvl));
+
+        // Progressive time adjustment for memorization
+        let showTime = config.showNewPlateSecs;
+        if (config.cumulative && lvl > 0) {
+            // Adds 2 seconds per level to account for increasing mental load
+            showTime += lvl * 2;
+        }
+
+        startCountdown(showTime, () => beginRecall(plts, lvl));
     }
 
     function handleStart() {
@@ -916,10 +935,10 @@ const LicensePlateMode: React.FC<LicensePlateModeProps> = ({ onClose }) => {
     const timerPct = phase === 'showing' ? (timer / config.showNewPlateSecs) * 100 : (timer / config.vocalTimeSecs) * 100;
 
     return (
-        <div className={`fixed inset-0 z-[300] flex overflow-hidden font-sans transition-colors duration-500 ${theme === 'officer' ? 'bg-gray-950' : 'bg-gray-50'}`}>
+        <div className={`fixed inset-0 z-[9999] flex overflow-hidden font-sans transition-colors duration-500 ${theme === 'officer' ? 'bg-gray-950' : 'bg-gray-50'}`}>
             
-            {/* Sidebar Plate History */}
-            <div className={`transition-all duration-300 transform ${isSidebarOpen ? 'w-48 px-3' : 'w-12 px-1'} border-r flex flex-col py-6 overflow-y-auto custom-scrollbar shrink-0 ${
+            {/* Sidebar Plate History - Hidden on small screens unless explicitly toggled */}
+            <div className={`transition-all duration-300 transform ${isSidebarOpen ? 'w-48 px-3' : 'w-0 md:w-12 px-0 md:px-1'} border-r flex flex-col py-6 overflow-y-auto custom-scrollbar shrink-0 shadow-2xl z-50 ${
                 theme === 'officer' ? 'bg-gray-900 border-white/5' : 'bg-white border-gray-100'
             }`}>
                 <div 
@@ -991,13 +1010,13 @@ const LicensePlateMode: React.FC<LicensePlateModeProps> = ({ onClose }) => {
                     </div>
                 </div>
 
-                {/* Content */}
-                <div className="flex-1 flex flex-col items-center justify-center p-6 relative">
+                {/* Content Area */}
+                <div className="flex-1 flex flex-col items-center justify-center p-4 md:p-8 relative overflow-y-auto custom-scrollbar">
                     
                     {/* Phase Renderers */}
                     {phase === 'config' && (
-                        <div className={`rounded-[40px] shadow-2xl animate-in fade-in zoom-in-95 duration-500 overflow-hidden ${
-                            theme === 'officer' ? 'bg-gray-900 border border-white/5' : 'bg-white'
+                        <div className={`w-[95%] md:w-auto rounded-[32px] md:rounded-[40px] shadow-2xl animate-in fade-in zoom-in-95 duration-500 overflow-hidden border ${
+                            theme === 'officer' ? 'bg-gray-900 border-white/5' : 'bg-white border-gray-100'
                         }`}>
                             <ConfigPanel config={config} theme={theme} feedbacks={feedbacks} onChange={setConfig} onStart={handleStart} />
                         </div>
@@ -1038,7 +1057,7 @@ const LicensePlateMode: React.FC<LicensePlateModeProps> = ({ onClose }) => {
                     )}
 
                     {phase === 'recall' && (
-                        <div className="w-full max-w-2xl flex flex-col items-center gap-8 animate-in fade-in duration-300">
+                        <div className="w-full max-w-2xl flex flex-col items-center gap-4 md:gap-8 animate-in fade-in duration-300">
                             <div className="w-full space-y-3">
                                 <div className="flex justify-between items-end">
                                     <div>
@@ -1175,7 +1194,7 @@ const LicensePlateMode: React.FC<LicensePlateModeProps> = ({ onClose }) => {
                     )}
 
                     {phase === 'complete' && (
-                        <div className="flex flex-col items-center gap-8 animate-in zoom-in-95 duration-500 text-center max-w-lg w-full">
+                        <div className="flex flex-col items-center gap-6 md:gap-8 animate-in zoom-in-95 duration-500 text-center max-w-lg w-full max-h-full overflow-y-auto px-2 py-4 custom-scrollbar">
                             <style>{ANIMATIONS}</style>
                             <Trophy size={80} className="text-yellow-400" strokeWidth={1} />
                             <div>
